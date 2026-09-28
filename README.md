@@ -23,6 +23,7 @@ DATABASE_URL=postgresql+psycopg://lighthouse:change-me@localhost:5432/lighthouse
 
 - `DATABASE_URL` is required. Alembic reads it only from the environment.
 - URL-encode special characters in the password (e.g. `%` → `%25`).
+- Avoid `$` and `#` in `.env` values: Make parses the file and would mangle them.
 - A plain `postgresql://` URL also works. It is switched to the psycopg (v3)
   driver automatically.
 
