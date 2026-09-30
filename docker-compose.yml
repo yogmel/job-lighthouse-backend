@@ -10,6 +10,10 @@ x-app: &app
     # Built here, not taken from .env: inside the network the DB host is
     # `postgres`, not localhost.
     DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    # Shared JWT signing secret: Companies issues tokens, both services validate.
+    JWT_SECRET: ${JWT_SECRET:?set in .env}
+    JWT_TTL_SECONDS: ${JWT_TTL_SECONDS:-}
+    GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   depends_on:
     postgres:
       condition: service_healthy

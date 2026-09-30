@@ -19,9 +19,16 @@ POSTGRES_DB=lighthouse
 POSTGRES_PORT=5432
 
 DATABASE_URL=postgresql+psycopg://lighthouse:change-me@localhost:5432/lighthouse
+
+# Auth. Generate the secret with: openssl rand -hex 32
+JWT_SECRET=change-me
+# JWT_TTL_SECONDS=604800        # optional, default 7 days
+# GOOGLE_CLIENT_ID=...          # needed for POST /auth/google
 ```
 
 - `DATABASE_URL` is required. Alembic reads it only from the environment.
+- `JWT_SECRET` is required by both services at startup. Use the same value
+  for both. Tests set their own.
 - URL-encode special characters in the password (e.g. `%` → `%25`).
 - Avoid `$` and `#` in `.env` values: Make parses the file and would mangle them.
 - A plain `postgresql://` URL also works. It is switched to the psycopg (v3)
