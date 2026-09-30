@@ -115,6 +115,13 @@ Auth needs these (from v0.2):
   changing it logs everyone out.
 - `GOOGLE_CLIENT_ID`: optional. Without it, `POST /auth/google` returns 503.
 - `JWT_TTL_SECONDS`: optional, 7 days by default.
+- `CORS_ALLOWED_ORIGINS`: frontend origins the browser may call from,
+  comma-separated, no trailing `/`. Unset means none, so the Vercel
+  frontend is blocked. Set it to
+  `CORS_ALLOWED_ORIGINS=https://job-lighthouse.vercel.app`.
+  CORS headers come from the apps only. Don't add `Access-Control-*`
+  headers in either Nginx: a duplicate header makes the browser reject
+  the response.
 
 Also set these, so the compose Nginx binds to localhost only and leaves
 80/443 to the host Nginx:

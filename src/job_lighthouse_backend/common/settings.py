@@ -10,6 +10,15 @@ class SettingsError(RuntimeError):
     pass
 
 
+def cors_allowed_origins_from_env() -> list[str]:
+    """Origins from ``CORS_ALLOWED_ORIGINS`` (comma-separated). Unset: none.
+
+    A trailing ``/`` is dropped: the browser's ``Origin`` header never has one.
+    """
+    raw = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+    return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str
