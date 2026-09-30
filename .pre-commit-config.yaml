@@ -1,4 +1,5 @@
-# PROJ-002: install with `make hooks`. Same checks as CI's lint job.
+# PROJ-002: install with `make hooks`. Same checks as CI's lint job, plus
+# mypy (PROJ-004).
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.16.9
@@ -20,4 +21,14 @@ repos:
         entry: uv lock --check
         language: system
         files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+
+      # PROJ-004: runs in the project venv, not mirrors-mypy's isolated env,
+      # so it sees the real dependencies and matches CI. Files come from
+      # [tool.mypy] in pyproject.toml.
+      - id: mypy
+        name: mypy
+        entry: uv run --frozen mypy
+        language: system
+        types: [python]
         pass_filenames: false

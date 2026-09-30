@@ -27,8 +27,10 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "httpx2>=2.13.1",
+    "mypy>=2.3.1",
     "pre-commit>=4.6.2",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
     "ruff>=0.16.9",
 ]
 
@@ -44,3 +46,24 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "S"]
 [tool.ruff.lint.per-file-ignores]
 # pytest uses bare asserts; test fixtures use fake passwords and tokens.
 "tests/**" = ["S101", "S105"]
+
+[tool.mypy]
+# PROJ-004: default ("basic") checking. Tighten per module later with
+# [[tool.mypy.overrides]], e.g. `strict = true` for one package.
+python_version = "3.13"
+files = ["src", "tests"]
+check_untyped_defs = true
+warn_unused_ignores = true
+
+[tool.coverage.run]
+# PROJ-004. SQLAlchemy's async engine runs queries in greenlets; without
+# "greenlet" every line after an `await session...` counts as missed.
+source = ["job_lighthouse_backend"]
+branch = true
+concurrency = ["thread", "greenlet"]
+
+[tool.coverage.report]
+# PROJ-004: set when v0.2 landed (96% at the time). Raise it as tests grow.
+fail_under = 90
+show_missing = true
+skip_covered = true

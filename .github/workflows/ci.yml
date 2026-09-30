@@ -30,6 +30,37 @@ jobs:
       - name: Ruff format
         run: uv run --frozen ruff format --check .
 
+  # PROJ-004: mypy settings and target files live in pyproject.toml.
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: mypy
+        run: uv run --frozen mypy
+
+  # PROJ-004: SAST. Run with uvx at a pinned version (not a dev dependency),
+  # so Semgrep's own tree stays out of uv.lock and pip-audit. tests/ is in
+  # Semgrep's default ignore list.
+  semgrep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # Keep in step with SEMGREP_VERSION in the Makefile.
+      SEMGREP_VERSION: 1.178.0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Semgrep (Python + FastAPI rules)
+        run: >-
+          uvx "semgrep@${SEMGREP_VERSION}" scan --metrics=off --error
+          --config p/python --config p/fastapi
+          src migrations
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -69,8 +100,48 @@ jobs:
           uv run --frozen alembic upgrade head
           uv run --frozen alembic downgrade base
           uv run --frozen alembic upgrade head
+      # PROJ-004: coverage settings and fail_under live in pyproject.toml.
       - name: pytest
-        run: uv run --frozen pytest
+        run: uv run --frozen pytest --cov --cov-report=term
+      - name: Coverage report
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "### Coverage"
+            echo
+            uv run --frozen coverage report --format=markdown --fail-under=0
+          } > coverage.md
+          cat coverage.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        with:
+          name: coverage-report
+          path: coverage.md
+          retention-days: 7
+
+  # PROJ-004: coverage on the PR as one comment, updated on each push. A
+  # separate job so the job that runs PR code never holds a write token.
+  # Dependabot PRs get a read-only token, so they only get the job summary.
+  coverage-comment:
+    needs: test
+    if: >-
+      ${{ !cancelled() && github.event_name == 'pull_request'
+      && github.event.pull_request.user.login != 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-report
+      - name: Post or update PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh pr comment "$PR" --body-file coverage.md --edit-last --create-if-none
 
   docker-build:
     runs-on: ubuntu-latest

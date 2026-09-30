@@ -132,20 +132,40 @@ make down
 | Job | Checks |
 | --- | --- |
 | `lint` | `uv lock --check`, `ruff check`, `ruff format --check` |
-| `test` | single Alembic head, `upgrade head` → `downgrade base` → `upgrade head`, `pytest` against a Postgres 17 service |
+| `typecheck` | `mypy` (settings and files in `pyproject.toml` → `[tool.mypy]`) |
+| `semgrep` | Semgrep SAST, `p/python` + `p/fastapi` rules, on `src/` and `migrations/` |
+| `test` | single Alembic head, `upgrade head` → `downgrade base` → `upgrade head`, `pytest --cov` against a Postgres 17 service; fails below `fail_under` |
+| `coverage-comment` | posts the coverage table on the PR (one comment, updated each push); skipped for Dependabot |
 | `docker-build` | `docker build` (no push) + Trivy image scan |
 | `gitleaks` | secrets in the branch's full git history |
 | `pip-audit` | known CVEs in `uv.lock` (all groups) |
 | `pr-title` | PR title starts with `BE-`/`FE-`/`PROJ-` + number (`pr-title.yml`); skipped for Dependabot |
 
-Run the same checks locally: `make lint`, `make test`, `make audit`,
-`make secrets`, `make scan-image` (the last two need `gitleaks` / `trivy`,
-e.g. `brew install gitleaks trivy`).
+Run the same checks locally: `make lint`, `make typecheck`, `make sast`,
+`make cov`, `make audit`, `make secrets`, `make scan-image` (the last two
+need `gitleaks` / `trivy`, e.g. `brew install gitleaks trivy`).
+
+**Types, SAST, coverage (PROJ-004)**
+
+- **mypy** runs in default mode plus `check_untyped_defs`. Tighten one
+  module at a time with `[[tool.mypy.overrides]]` (e.g. `strict = true`).
+- **Semgrep** uses registry rulesets, which change over time: a new rule can
+  turn a PR red with no code change. Silence a false positive with
+  `# nosemgrep: <rule-id>` on the line, with the reason in a comment
+  above it.
+- **Coverage** settings live in `pyproject.toml` → `[tool.coverage.*]`.
+  `concurrency` includes `greenlet`, or SQLAlchemy async code counts as
+  missed. `fail_under` is 90 (coverage was 96% when set). Raise it as
+  tests grow. `make test` doesn't measure coverage; `make cov` does.
+- The table shows up in the PR comment and in the `test` job summary
+  (Dependabot PRs get the summary only: their token can't comment).
+- **Dashboard:** none for now (Codacy / SonarQube Cloud / Codecov
+  skipped, see TASKS.md → PROJ-004).
 
 **Local hooks**
 
-- `make hooks` installs pre-commit: Ruff (lint + format), gitleaks,
-  `uv lock --check`. A commit with a Ruff error is blocked.
+- `make hooks` installs pre-commit: Ruff (lint + format), mypy, gitleaks,
+  `uv lock --check`. A commit with a Ruff or mypy error is blocked.
 - Keep the Ruff `rev` in `.pre-commit-config.yaml` in step with the Ruff
   version in `uv.lock`.
 - `.claude/settings.json` (committed) runs Ruff on each Python file Claude
@@ -156,8 +176,9 @@ e.g. `brew install gitleaks trivy`).
 **Branch rules on `main`**
 
 - PR required, no direct push, no force push, no deletion.
-- Required checks: `lint`, `test`, `docker-build`, `gitleaks`, `pip-audit`,
-  `pr-title`.
+- Required checks: `lint`, `typecheck`, `semgrep`, `test`, `docker-build`,
+  `gitleaks`, `pip-audit`, `pr-title`. (`coverage-comment` is not required:
+  it only reports.)
 - On a private repo, rulesets and branch protection need **GitHub Pro**
   (or Team). Without that, these rules are convention only.
 
@@ -169,7 +190,7 @@ Works on a private repo without GitHub Advanced Security (PROJ-003).
 | --- | --- | --- |
 | Secrets | gitleaks in CI (full history) and pre-commit | any finding |
 | Dependencies | `pip-audit` in CI; Dependabot updates + alerts | any known CVE |
-| Code | Ruff `S` (Bandit) rules, part of `ruff check` | any finding |
+| Code | Ruff `S` (Bandit) rules, part of `ruff check`; Semgrep in CI (`semgrep`) | any finding |
 | Image | Trivy in CI (`docker-build`) and `deploy.yml` before push | HIGH/CRITICAL with a fix available |
 
 - **False positives**
@@ -199,6 +220,7 @@ Works on a private repo without GitHub Advanced Security (PROJ-003).
   - Trivy: `trivy-action` commit SHA and `version` in `ci.yml` and
     `deploy.yml` (pinned by SHA: its tags were hijacked once)
   - pip-audit: version in `ci.yml` and the `Makefile`
+  - Semgrep: `SEMGREP_VERSION` in `ci.yml` and the `Makefile`
 
 ## Deploy
 

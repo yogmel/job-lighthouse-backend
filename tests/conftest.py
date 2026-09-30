@@ -94,6 +94,7 @@ def make_user(
             " VALUES (%s, %s, %s) RETURNING id",
             (email, hash_password(password) if password else None, google_id),
         ).fetchone()
+        assert row is not None
         created.append(row[0])
         return {"id": row[0], "email": email, "password": password}
 

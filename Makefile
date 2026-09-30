@@ -6,8 +6,10 @@ endif
 
 COMPOSE ?= docker-compose
 ALEMBIC := uv run alembic
+# Keep in step with SEMGREP_VERSION in .github/workflows/ci.yml.
+SEMGREP_VERSION := 1.178.0
 
-.PHONY: certs up down logs db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner run-companies test hooks lint audit secrets scan-image
+.PHONY: certs up down logs db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner run-companies test cov hooks lint typecheck sast audit secrets scan-image
 
 certs: ## Create a self-signed TLS cert for local Nginx (nginx/certs/, git-ignored)
 	@mkdir -p nginx/certs
@@ -55,13 +57,22 @@ run-companies: ## Run the Companies Service locally on :8002 (reload on change)
 test: ## Run the test suite (DB tests need `make db-up`)
 	uv run pytest
 
-hooks: ## Install the pre-commit git hooks (Ruff, gitleaks, uv lock --check)
+cov: ## Run the test suite with coverage, same as CI (fails below fail_under in pyproject.toml)
+	uv run pytest --cov --cov-report=term
+
+hooks: ## Install the pre-commit git hooks (Ruff, mypy, gitleaks, uv lock --check)
 	uv run pre-commit install
 
 lint: ## Run the CI lint checks locally
 	uv lock --check
 	uv run ruff check .
 	uv run ruff format --check .
+
+typecheck: ## Run mypy, same as CI's typecheck job
+	uv run mypy
+
+sast: ## Run Semgrep, same as CI's semgrep job
+	uvx semgrep@$(SEMGREP_VERSION) scan --metrics=off --error --config p/python --config p/fastapi src migrations
 
 audit: ## Check locked dependencies for known CVEs (same as CI's pip-audit job)
 	uv export --frozen --no-emit-project --format requirements-txt -o .audit-requirements.txt
