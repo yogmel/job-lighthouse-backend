@@ -21,9 +21,11 @@ from typing import Protocol
 from urllib.parse import urljoin, urlsplit
 
 import requests
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, Tag, UnicodeDammit
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Route, sync_playwright
+from requests.structures import CaseInsensitiveDict
+from requests.utils import get_encoding_from_headers
 from soupsieve import SelectorSyntaxError
 
 from job_lighthouse_backend.companies.sources import ScraperSource, Selectors
@@ -105,7 +107,25 @@ def _read_capped(resp: requests.Response) -> str:
                 raise FetchError("page too large")
     except requests.RequestException as exc:
         raise FetchError(f"request failed: {type(exc).__name__}") from exc
-    return body.decode(resp.encoding or "utf-8", errors="replace")
+    return _decode(bytes(body), resp.headers)
+
+
+def _decode(body: bytes, headers: CaseInsensitiveDict[str]) -> str:
+    """Decode HTML bytes: header charset, else ``<meta charset>``, else sniff.
+
+    Not ``resp.text``: requests assumes ISO-8859-1 for ``text/html`` without
+    a charset, which garbles UTF-8 pages that only declare it in a meta tag.
+    """
+    content_type = headers.get("content-type", "").lower()
+    declared = (
+        get_encoding_from_headers(headers) if "charset=" in content_type else None
+    )
+    dammit = UnicodeDammit(
+        body, known_definite_encodings=[declared] if declared else [], is_html=True
+    )
+    if dammit.unicode_markup is None:
+        raise FetchError("page encoding is unreadable")
+    return dammit.unicode_markup
 
 
 def render_with_playwright(url: str, selectors: Selectors) -> tuple[str, str]:

@@ -78,12 +78,12 @@ def _source(strategy: str = "static", **selectors) -> ScraperSource:
     )
 
 
-def _response(status=200, body=b"", headers=None):
+def _response(status=200, body=b"", headers=None, encoding="utf-8"):
     resp = requests.Response()
     resp.status_code = status
     resp.raw = io.BytesIO(body)
     resp.headers = CaseInsensitiveDict(headers or {})
-    resp.encoding = "utf-8"
+    resp.encoding = encoding
     return resp
 
 
@@ -379,3 +379,47 @@ def test_render_checks_careers_url_first(monkeypatch):
     _fake_playwright(monkeypatch, _FakePage(200))
     with pytest.raises(FetchError, match="non-public"):
         fetch_scraper(_source("dynamic", careers_url="http://localhost:3000/"))
+
+
+UTF8_PAGE = (
+    '<html><head><meta charset="utf-8"></head><body>'
+    '<li class="job"><h3 class="t">Ingenieur München</h3>'
+    '<a class="go" href="/jobs/m\u00fcnchen">x</a></li></body></html>'
+).encode()
+
+
+def test_utf8_meta_charset_without_header_charset():
+    # requests would guess ISO-8859-1 for text/html without a charset.
+    resp = _response(body=UTF8_PAGE, headers={"Content-Type": "text/html"})
+    resp.encoding = requests.utils.get_encoding_from_headers(resp.headers)
+    assert fetch_scraper(_source(), FakeHttp(resp)) == [
+        Opening("Ingenieur München", "https://acme.example/jobs/münchen")
+    ]
+
+
+def test_header_charset_wins():
+    body = UTF8_PAGE.decode().replace('charset="utf-8"', "").encode("latin-1")
+    resp = _response(
+        body=body, headers={"Content-Type": "text/html; charset=ISO-8859-1"}
+    )
+    [opening] = fetch_scraper(_source(), FakeHttp(resp))
+    assert opening.title == "Ingenieur München"
+
+
+def test_no_charset_anywhere_is_sniffed():
+    body = UTF8_PAGE.decode().replace('<meta charset="utf-8">', "").encode()
+    resp = _response(body=body, headers={"Content-Type": "text/html"}, encoding=None)
+    [opening] = fetch_scraper(_source(), FakeHttp(resp))
+    assert opening.title == "Ingenieur München"
+
+
+def test_undecodable_page_is_failure(monkeypatch):
+    class _Unreadable:
+        unicode_markup = None
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr(scraper, "UnicodeDammit", _Unreadable)
+    with pytest.raises(FetchError, match="encoding"):
+        fetch_scraper(_source(), FakeHttp(_response(body=UTF8_PAGE)))
