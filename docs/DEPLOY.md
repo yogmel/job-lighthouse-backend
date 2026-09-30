@@ -9,7 +9,8 @@ Push to `main` → `.github/workflows/deploy.yml`:
 
 `deploy.sh` pulls the image, runs `docker compose up -d --no-build --wait`
 (migrations first, then both services, then Nginx), and fails if any app
-container isn't on the new image. The GHCR login uses the job's short-lived
+container isn't on the new image, or if the stack isn't healthy within
+3 minutes. The GHCR login uses the job's short-lived
 `GITHUB_TOKEN` and is logged out after the pull. No long-lived registry
 credential lives on the droplet.
 
@@ -37,10 +38,25 @@ Do these once, in order. `<domain>` is the API host (e.g. `api.example.com`).
 
 ### 1. Droplet + DNS
 
-- Create an Ubuntu 24.04 droplet. 2 GB RAM is the floor for Postgres + two
-  services; Playwright (later) needs more.
+- Create an Ubuntu 24.04 droplet with **2 GB RAM or more**. The full stack
+  uses ~600 MB at idle, and Docker, host Nginx and any other sites come on
+  top. Playwright (later) needs more.
+  - 512 MB does **not** work: the services get OOM-killed and restart in a
+    loop, CPU sits at 100% and SSH stops responding.
+  - When resizing, pick **CPU and RAM only** if you may want to downsize
+    later. A disk resize can't be undone.
 - Add your personal SSH key when creating it.
 - Point an `A` record for `<domain>` at the droplet IP.
+- Optional: a 1 GB swapfile as a buffer for spikes (e.g. image pulls). No
+  extra cost, it lives on the droplet's disk:
+
+  ```sh
+  fallocate -l 1G /swapfile && chmod 600 /swapfile
+  mkswap /swapfile && swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  ```
+
+  If `free -h` shows swap in steady use, the droplet needs more RAM.
 
 ### 2. Docker + firewall
 
@@ -162,6 +178,8 @@ certbot renew --dry-run
   next to the others.
 - To add `<domain>` to an existing cert instead, pass `--cert-name <name>`
   and **every** domain it should cover. The list is replaced, not appended.
+- `proxy_pass` must be **`https://`**127.0.0.1:8443. With `http://`, every
+  request fails with `400 The plain HTTP request was sent to HTTPS port`.
 - Until the first deploy, `https://<domain>` returns `502`. That's expected.
 
 ### 7. GitHub
@@ -213,13 +231,22 @@ A failed deploy turns the workflow red but does **not** roll back on its own:
 the stack may be left on the broken image. `image.env` still names the last
 good image, so the command below with `$(cut -d= -f2 image.env)` restores it.
 
-Open an older **deploy** run in Actions → *Re-run all jobs* (it redeploys
-that run's commit), or on the droplet
-(after `docker login ghcr.io` with a `read:packages` token):
+**Preferred:** open an older **deploy** run in Actions → *Re-run all jobs*.
+It redeploys that run's commit with the job's short-lived token, so no
+credential is left on the droplet.
+
+**By hand on the droplet** (as `deploy`), only if Actions is unavailable:
 
 ```sh
+docker login ghcr.io -u <github-user>     # paste a read:packages token
 bash /opt/job-lighthouse/deploy.sh ghcr.io/yogmel/job-lighthouse-backend:sha-<old-commit>
+docker logout ghcr.io
 ```
+
+- Docker stores the token **unencrypted** in `~/.docker/config.json` and it
+  never expires there. Always `docker logout` afterwards.
+- Use a token with **only** `read:packages` and a **short expiry** (e.g.
+  7 days), and revoke it on GitHub when you're done.
 
 Rolling back code does **not** roll back migrations. If the old code can't
 run on the new schema, downgrade first with `dc run --rm migrate alembic
