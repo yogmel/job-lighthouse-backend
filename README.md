@@ -68,3 +68,29 @@ make test
 - Settings come from env vars only. Required: `DATABASE_URL`.
 - On startup each service runs `SELECT 1`. If Postgres is unreachable it
   logs the error and exits non-zero.
+
+## Docker Compose
+
+`docker-compose.yml` runs the whole backend from one image (`Dockerfile`):
+
+| Container | What it does | Host port |
+| --- | --- | --- |
+| `postgres` | Postgres 17, data in the `pgdata` volume | `127.0.0.1:5432` |
+| `migrate` | one-shot `alembic upgrade head`, then exits | — |
+| `job-runner` | Job Runner Service | `127.0.0.1:8001` |
+| `companies` | Companies Service | `127.0.0.1:8002` |
+
+```sh
+make up     # docker compose up -d --build --wait
+make logs
+make down
+```
+
+- Uses the same `.env` as above (`POSTGRES_*`). Optional: `JOB_RUNNER_PORT`,
+  `COMPANIES_PORT` to change the host ports.
+- Services get `DATABASE_URL` from compose, built from `POSTGRES_*` with host
+  `postgres`. The `DATABASE_URL` in `.env` (pointing at `localhost`) is only
+  for running Alembic / the services on your machine.
+- Both services wait for Postgres to be healthy and for `migrate` to finish.
+- `.env` is excluded from the image by `.dockerignore`.
+

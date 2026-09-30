@@ -7,7 +7,16 @@ endif
 COMPOSE ?= docker-compose
 ALEMBIC := uv run alembic
 
-.PHONY: db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner run-companies test
+.PHONY: up down logs db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner run-companies test
+
+up: ## Build and start the full stack (Postgres, migrate, both services) and wait until healthy
+	$(COMPOSE) up -d --build --wait
+
+down: ## Stop the full stack (data volume is kept)
+	$(COMPOSE) down
+
+logs: ## Follow logs of all containers
+	$(COMPOSE) logs -f
 
 db-up: ## Start local Postgres and wait until it is healthy
 	$(COMPOSE) up -d --wait postgres
