@@ -7,9 +7,15 @@ endif
 COMPOSE ?= docker-compose
 ALEMBIC := uv run alembic
 
-.PHONY: up down logs db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner run-companies test
+.PHONY: certs up down logs db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner run-companies test
 
-up: ## Build and start the full stack (Postgres, migrate, both services) and wait until healthy
+certs: ## Create a self-signed TLS cert for local Nginx (nginx/certs/, git-ignored)
+	@mkdir -p nginx/certs
+	openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+		-subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+		-keyout nginx/certs/privkey.pem -out nginx/certs/fullchain.pem
+
+up: ## Build and start the full stack (Postgres, migrate, both services, Nginx) and wait until healthy
 	$(COMPOSE) up -d --build --wait
 
 down: ## Stop the full stack (data volume is kept)
