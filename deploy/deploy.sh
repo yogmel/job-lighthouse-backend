@@ -34,7 +34,9 @@ fi
 compose pull "${APP_SERVICES[@]}"
 # Compose only warns when a buildable service's pull fails.
 docker image inspect "$IMAGE_REF" >/dev/null
-compose up -d --no-build --wait --remove-orphans
+# A service that never gets healthy (e.g. crash-looping) fails the deploy
+# instead of hanging it.
+compose up -d --no-build --wait --wait-timeout 180 --remove-orphans
 
 ids=()
 while read -r id; do ids+=("$id"); done < <(compose ps -aq "${APP_SERVICES[@]}")

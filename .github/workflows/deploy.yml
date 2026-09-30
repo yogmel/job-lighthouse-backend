@@ -62,6 +62,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # Backstop for a hung SSH session; deploy.sh's own --wait-timeout
+    # normally fails first. A first deploy pulls every image, hence the room.
+    timeout-minutes: 15
     environment: production
     permissions:
       contents: read
