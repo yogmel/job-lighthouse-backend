@@ -38,12 +38,12 @@ def upgrade() -> None:
         sa.Column("url", sa.Text(), nullable=False),
         sa.Column("location", sa.Text(), nullable=False),
         sa.Column("description", sa.Text(), nullable=False),
-        # Default NO ACTION (not RESTRICT) so an account delete can cascade
-        # to companies and jobs in the same statement.
+        # Deferred so an account delete can cascade to companies and jobs
+        # (checked at commit); deleting only a company with jobs still fails.
         sa.Column(
             "company_id",
             sa.Uuid(),
-            sa.ForeignKey("companies.id"),
+            sa.ForeignKey("companies.id", deferrable=True, initially="DEFERRED"),
             nullable=False,
             index=True,
         ),
