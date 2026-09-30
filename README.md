@@ -79,8 +79,10 @@ make test
 | `migrate` | one-shot `alembic upgrade head`, then exits | — |
 | `job-runner` | Job Runner Service | `127.0.0.1:8001` |
 | `companies` | Companies Service | `127.0.0.1:8002` |
+| `nginx` | reverse proxy + TLS, routes by path | `80`, `443` |
 
 ```sh
+make certs  # once: self-signed cert for Nginx
 make up     # docker compose up -d --build --wait
 make logs
 make down
@@ -93,4 +95,25 @@ make down
   for running Alembic / the services on your machine.
 - Both services wait for Postgres to be healthy and for `migrate` to finish.
 - `.env` is excluded from the image by `.dockerignore`.
+
+## Nginx & TLS
+
+`nginx/default.conf` routes by path prefix:
+
+| Path | Service |
+| --- | --- |
+| `/companies*`, `/auth*`, `/account*` | Companies |
+| `/config*`, `/jobs*`, `/runs*` | Job Runner |
+| anything else | 404 from Nginx |
+
+- Port 80 redirects to HTTPS on 443.
+- Nginx reads `fullchain.pem` and `privkey.pem` from `NGINX_CERTS_DIR`
+  (default `./nginx/certs`, git-ignored). Nginx won't start without them.
+- Locally, `make certs` creates a self-signed cert for `localhost`:
+  `curl --cacert nginx/certs/fullchain.pem https://localhost/jobs`
+  (or `curl -k`).
+- On the droplet, point `NGINX_CERTS_DIR` at a folder with the real
+  `fullchain.pem` / `privkey.pem`. Let's Encrypt's `live/<domain>/` holds
+  symlinks into `archive/`, so copy the files rather than mounting it alone.
+- Optional: `NGINX_HTTP_PORT`, `NGINX_HTTPS_PORT` to change host ports.
 
