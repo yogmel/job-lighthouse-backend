@@ -47,3 +47,7 @@ class CustomSource(_SourceModel):
 Source = Annotated[
     BoardSource | ScraperSource | CustomSource, Field(discriminator="kind")
 ]
+
+# What a user may set by hand. `custom` needs a handler shipped in code
+# first, so it can't be created from the API yet (v0.10).
+ManualSource = Annotated[BoardSource | ScraperSource, Field(discriminator="kind")]
