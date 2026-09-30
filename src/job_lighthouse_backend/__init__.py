@@ -1,2 +1,1 @@
-def main() -> None:
-    print("Hello from job-lighthouse-backend!")
+"""Job Lighthouse backend: Job Runner and Companies services."""
