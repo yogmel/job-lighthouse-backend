@@ -3,7 +3,8 @@
 
 x-app: &app
   build: .
-  image: job-lighthouse-backend
+  # On the droplet: the GHCR image for the deployed commit (see deploy/deploy.sh).
+  image: ${APP_IMAGE:-job-lighthouse-backend}
   restart: unless-stopped
   environment:
     # Built here, not taken from .env: inside the network the DB host is

@@ -112,8 +112,15 @@ make down
 - Locally, `make certs` creates a self-signed cert for `localhost`:
   `curl --cacert nginx/certs/fullchain.pem https://localhost/jobs`
   (or `curl -k`).
-- On the droplet, point `NGINX_CERTS_DIR` at a folder with the real
-  `fullchain.pem` / `privkey.pem`. Let's Encrypt's `live/<domain>/` holds
-  symlinks into `archive/`, so copy the files rather than mounting it alone.
-- Optional: `NGINX_HTTP_PORT`, `NGINX_HTTPS_PORT` to change host ports.
+- On the droplet, the host's Nginx holds the Let's Encrypt cert on 80/443
+  and proxies to this Nginx on `127.0.0.1:8443`, which uses a self-signed
+  cert. See [`docs/DEPLOY.md`](docs/DEPLOY.md) → Layout on the droplet.
+- Optional: `NGINX_HTTP_PORT`, `NGINX_HTTPS_PORT` to change host ports
+  (a value like `127.0.0.1:8443` also sets the bind address).
 
+## Deploy
+
+Push to `main` builds the image, pushes it to GHCR (`sha-<commit>` tag) and
+deploys it to the droplet with Docker Compose
+(`.github/workflows/deploy.yml` → `deploy/deploy.sh`). One-time droplet setup,
+secrets, operations and rollback: [`docs/DEPLOY.md`](docs/DEPLOY.md).

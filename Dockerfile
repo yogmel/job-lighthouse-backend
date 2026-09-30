@@ -20,6 +20,9 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 RUN uv sync --locked --no-dev
 
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.revision=$GIT_SHA
+
 RUN useradd --system --no-create-home app
 USER app
 
