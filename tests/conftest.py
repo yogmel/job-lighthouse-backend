@@ -83,3 +83,13 @@ def make_user(
     yield _make
     for user_id in created:
         db.execute("DELETE FROM users WHERE id = %s", (user_id,))
+
+
+@pytest.fixture
+def auth_header() -> Callable[[uuid.UUID], dict[str, str]]:
+    """``Authorization`` header with a valid token for ``user_id``."""
+    from job_lighthouse_backend.common.auth import issue_token
+    from job_lighthouse_backend.common.settings import Settings
+
+    settings = Settings(database_url="unused", jwt_secret=TEST_JWT_SECRET)
+    return lambda user_id: {"Authorization": f"Bearer {issue_token(user_id, settings)}"}
