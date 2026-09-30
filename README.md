@@ -56,10 +56,12 @@ Both services are FastAPI apps in `src/job_lighthouse_backend/`, sharing
 | Service | Module | Local port |
 | --- | --- | --- |
 | Job Runner | `job_runner.main:app` | 8001 |
+| Companies | `companies.main:app` | 8002 |
 
 ```sh
 make run-job-runner   # needs DATABASE_URL (from .env) and a running Postgres
-curl localhost:8001/health
+make run-companies
+curl localhost:8001/health localhost:8002/health
 make test
 ```
 

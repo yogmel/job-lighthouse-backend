@@ -4,6 +4,7 @@ The happy-path test needs a reachable Postgres (``make db-up``) and
 ``DATABASE_URL``; it is skipped otherwise.
 """
 
+import importlib
 import os
 
 import pytest
@@ -45,3 +46,17 @@ def test_startup_fails_when_postgres_unreachable(
 )
 def test_normalize_database_url_uses_psycopg(url: str) -> None:
     assert normalize_database_url(url) == "postgresql+psycopg://u:p@h/db"
+
+
+@pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="needs Postgres")
+@pytest.mark.parametrize(
+    "module",
+    [
+        "job_lighthouse_backend.job_runner.main",
+        "job_lighthouse_backend.companies.main",
+    ],
+)
+def test_service_apps_serve_health(module: str) -> None:
+    app = importlib.import_module(module).app
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
