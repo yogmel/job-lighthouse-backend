@@ -108,6 +108,14 @@ nano .env        # contents of .env.example, with real, strong values
 chmod 600 .env
 ```
 
+Auth needs these (from v0.2):
+
+- `JWT_SECRET`: **required**. Compose won't start without it. Generate
+  it with `openssl rand -hex 32`. Both services read the same value, so
+  changing it logs everyone out.
+- `GOOGLE_CLIENT_ID`: optional. Without it, `POST /auth/google` returns 503.
+- `JWT_TTL_SECONDS`: optional, 7 days by default.
+
 Also set these, so the compose Nginx binds to localhost only and leaves
 80/443 to the host Nginx:
 
