@@ -35,9 +35,21 @@ def _sync_dsn() -> str:
     return url.set(drivername="postgresql").render_as_string(hide_password=False)
 
 
+class _EmailFactory:
+    """Makes unique test emails and remembers them for cleanup."""
+
+    def __init__(self) -> None:
+        self.issued: list[str] = []
+
+    def __call__(self) -> str:
+        email = f"test-{uuid.uuid4().hex}@example.com"
+        self.issued.append(email)
+        return email
+
+
 @pytest.fixture
-def unique_email() -> Callable[[], str]:
-    return lambda: f"test-{uuid.uuid4().hex}@example.com"
+def unique_email() -> _EmailFactory:
+    return _EmailFactory()
 
 
 @pytest.fixture
@@ -50,18 +62,23 @@ def db() -> Iterator[psycopg.Connection]:
 
 
 @pytest.fixture
-def companies_client(db: psycopg.Connection) -> Iterator[TestClient]:
+def companies_client(
+    db: psycopg.Connection, unique_email: _EmailFactory
+) -> Iterator[TestClient]:
     from job_lighthouse_backend.companies.main import app
 
     with TestClient(app) as client:
         yield client
-    # Clean up any test users the requests created.
-    db.execute("DELETE FROM users WHERE email LIKE 'test-%@example.com'")
+    # Only this test's emails: other test runs may share the database.
+    db.execute(
+        "DELETE FROM users WHERE lower(email) = ANY(%s)",
+        ([e.lower() for e in unique_email.issued],),
+    )
 
 
 @pytest.fixture
 def make_user(
-    db: psycopg.Connection, unique_email: Callable[[], str]
+    db: psycopg.Connection, unique_email: _EmailFactory
 ) -> Iterator[Callable[..., dict]]:
     """Insert a user. Returns ``{"id", "email", "password"}``."""
     created: list[uuid.UUID] = []
