@@ -12,6 +12,9 @@ jobs:
   pr-title:
     runs-on: ubuntu-latest
     timeout-minutes: 1
+    # PROJ-003: Dependabot PRs have no ticket. A skipped job still counts as
+    # passing for the required check.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     steps:
       - name: Title starts with BE-/FE-/PROJ- ticket ID
         env:

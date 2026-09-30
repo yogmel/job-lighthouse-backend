@@ -1,0 +1,50 @@
+# PROJ-003: weekly version updates, grouped so each ecosystem opens at most
+# two PRs a week (minor+patch together, majors apart). Security updates come
+# from Dependabot alerts (repo setting, see README → Security scanning) and
+# are grouped per ecosystem too.
+version: 2
+
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+      python-major:
+        update-types: [major]
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # Dockerfile base images (python, uv).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      docker:
+        patterns: ["*"]
+
+  # docker-compose.yml images (postgres, nginx).
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      docker-compose:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ["*"]

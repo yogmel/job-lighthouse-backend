@@ -82,5 +82,60 @@ jobs:
         with:
           context: .
           push: false
+          load: true
+          tags: job-lighthouse-backend:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # PROJ-003: same scan as deploy.yml, so a vulnerable image fails the PR,
+      # not just the deploy. Pinned by commit SHA (trivy-action tags were
+      # hijacked once); bump SHA and `version` together.
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.74.0
+          image-ref: job-lighthouse-backend:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore
+
+  # PROJ-003: secrets anywhere in the branch's history, not only the diff.
+  # The repo is small, so a full scan every run is cheap.
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # Keep in step with the gitleaks rev in .pre-commit-config.yaml.
+      GITLEAKS_VERSION: 8.30.1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "$base/$tarball"
+          curl -fsSLO "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " $tarball\$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum -c -
+          tar -xzf "$tarball" gitleaks
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Scan full history
+        run: gitleaks git --redact --verbose --exit-code 1 .
+
+  # PROJ-003: known CVEs in locked dependencies (all groups: dev tools run
+  # in CI too). Audits the lock export, not a venv, so pip-audit's own
+  # dependencies don't end up in the report.
+  pip-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - name: Export locked requirements
+        run: uv export --frozen --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
+      - name: pip-audit
+        run: uvx pip-audit@2.10.1 --strict --require-hashes --disable-pip -r "$RUNNER_TEMP/requirements.txt"
