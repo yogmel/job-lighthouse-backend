@@ -2,6 +2,7 @@
 
 import importlib
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -69,7 +70,7 @@ def test_decode_rejects_alg_none() -> None:
     now = datetime.now(UTC)
     token = jwt.encode(
         {"sub": str(uuid.uuid4()), "iat": now, "exp": now + timedelta(hours=1)},
-        None,
+        "",
         algorithm="none",
     )
     with pytest.raises(InvalidTokenError):
@@ -77,7 +78,7 @@ def test_decode_rejects_alg_none() -> None:
 
 
 @pytest.fixture(params=SERVICES)
-def protected_client(request: pytest.FixtureRequest) -> TestClient:
+def protected_client(request: pytest.FixtureRequest) -> Iterator[TestClient]:
     """A service app with a test-only protected route added."""
     app = importlib.import_module(request.param).app
     path = "/_test/whoami"

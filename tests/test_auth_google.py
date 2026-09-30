@@ -122,13 +122,16 @@ def test_verified_email_links_existing_password_account(
         "SELECT google_id, email_verified, password_hash FROM users WHERE id = %s",
         (existing["id"],),
     ).fetchone()
+    assert row is not None
     assert row[0] == identity.sub
     assert row[1] is True
     assert row[2] is not None  # password login keeps working
-    count = db.execute(
+    count_row = db.execute(
         "SELECT count(*) FROM users WHERE lower(email) = lower(%s)",
         (existing["email"],),
-    ).fetchone()[0]
+    ).fetchone()
+    assert count_row is not None
+    count = count_row[0]
     assert count == 1
 
 
@@ -149,6 +152,7 @@ def test_unverified_email_with_existing_account_conflicts(
     row = db.execute(
         "SELECT google_id FROM users WHERE id = %s", (existing["id"],)
     ).fetchone()
+    assert row is not None
     assert row[0] is None
     assert _rows_for(db, identity.sub) == []
 
@@ -170,6 +174,7 @@ def test_email_linked_to_other_google_account_conflicts(
     row = db.execute(
         "SELECT google_id FROM users WHERE id = %s", (existing["id"],)
     ).fetchone()
+    assert row is not None
     assert row[0] == other_sub
 
 

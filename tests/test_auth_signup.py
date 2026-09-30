@@ -56,7 +56,9 @@ def test_signup_stores_hash_not_plaintext(
     email = unique_email()
     assert _signup(companies_client, email).status_code == 201
 
-    _, password_hash, _, _ = _row(db, email)
+    row = _row(db, email)
+    assert row is not None
+    _, password_hash, _, _ = row
     assert password_hash
     assert password_hash != PASSWORD
     assert PASSWORD not in password_hash
@@ -86,9 +88,11 @@ def test_duplicate_email_returns_409(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "An account with this email already exists."
-    count = db.execute(
+    count_row = db.execute(
         "SELECT count(*) FROM users WHERE lower(email) = lower(%s)", (email,)
-    ).fetchone()[0]
+    ).fetchone()
+    assert count_row is not None
+    count = count_row[0]
     assert count == 1
 
 

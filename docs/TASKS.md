@@ -307,6 +307,17 @@ security-sensitive code).
 - Coverage percentage visible on every PR
 - Dashboard decision recorded here (tool chosen or explicitly skipped)
 
+**Decisions:**
+
+- **Types:** mypy (pure Python, runs from the project venv in CI and
+  pre-commit), default mode plus `check_untyped_defs`.
+- **SAST:** Semgrep `p/python` + `p/fastapi`, run with pinned `uvx`.
+- **Coverage:** pytest-cov with `fail_under = 90` (96% when set). Shown as a
+  PR comment and in the `test` job summary.
+- **Dashboard: skipped.** The PR coverage comment plus the CI checks cover
+  what we need now, with no third-party service or extra secret. Revisit
+  if we want coverage trends over time.
+
 ### v0.2 follow-ups
 
 BE-011 – BE-015 are merged. Still to do:

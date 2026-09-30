@@ -15,10 +15,12 @@ NEW_PASSWORD = "a brand new passphrase"
 
 
 def _row(db: psycopg.Connection, user_id: uuid.UUID) -> tuple:
-    return db.execute(
+    row = db.execute(
         "SELECT email, password_hash, email_verified FROM users WHERE id = %s",
         (user_id,),
     ).fetchone()
+    assert row is not None
+    return row
 
 
 def test_get_account_returns_own_account(companies_client, make_user, auth_header):
