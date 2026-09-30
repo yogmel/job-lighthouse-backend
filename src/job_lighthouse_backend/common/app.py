@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from .db import check_connection, create_engine
+from .db import check_connection, create_engine, create_sessionmaker
 from .settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ def create_app(title: str) -> FastAPI:
             raise
         app.state.settings = settings
         app.state.engine = engine
+        app.state.sessionmaker = create_sessionmaker(engine)
         try:
             yield
         finally:
