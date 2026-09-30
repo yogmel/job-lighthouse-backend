@@ -136,6 +136,58 @@ deploy to the droplet via Docker Compose.
 - Push to `main` produces a green deploy run
 - Droplet is running the pushed commit's images after the workflow finishes
 
+### PROJ-002 · CI checks, branch rules, local hooks
+
+**Target:** project **Version:** v0.1
+
+GitHub Actions workflow on every PR and push to `main`, plus rules on
+`main` so nothing merges red. Same checks run locally via pre-commit and
+Claude Code hooks.
+
+- **CI jobs:** Ruff lint + format check, `uv lock --check`, pytest against a
+  Postgres service container, migration round-trip (`upgrade head` →
+  `downgrade base` → `upgrade head`) with a single-head check, `docker build`
+  (no push)
+- **Branch rules on `main`:** PR required, CI required to pass, no force
+  push, no direct push. Private repo: rulesets/branch protection need
+  **GitHub Pro** (or Team) — upgrade, or record that they are convention only
+- **pre-commit:** Ruff, `uv lock --check`, gitleaks (from PROJ-003); a
+  `make hooks` target that installs them
+- **Claude Code hooks** in committed `.claude/settings.json`: run Ruff on
+  edited Python files, deny edits to `.env*`
+- **PR hygiene:** PR template (`Closes #`, test checklist), check that the PR
+  title starts with a ticket ID (`BE-`/`FE-`/`PROJ-`)
+
+**Acceptance criteria:**
+
+- A PR with a lint error, failing test, broken migration or two Alembic heads
+  shows a red check and can't be merged
+- `make hooks` installs pre-commit; a commit with a Ruff error is blocked
+- CI runtime stays under ~5 minutes
+
+### PROJ-003 · Secret, dependency and image scanning
+
+**Target:** project **Version:** v0.1
+
+Security scans that work on a **private** repo without GitHub Advanced
+Security (so no GitHub secret scanning / CodeQL).
+
+- **Secrets:** gitleaks in CI (full history on first run) and in pre-commit
+- **Dependencies:** Dependabot version updates (uv/pip, Docker, GitHub
+  Actions) + Dependabot alerts; `pip-audit` in CI
+- **Code:** Ruff `S` (Bandit) rules enabled, false positives ignored inline
+  with a reason
+- **Images:** Trivy scan of both service images in the PROJ-001 workflow,
+  failing on HIGH/CRITICAL with a fix available
+
+**Depends on:** PROJ-001 (Trivy step), PROJ-002 (CI workflow, pre-commit).
+
+**Acceptance criteria:**
+
+- A committed fake secret fails CI and is blocked by pre-commit
+- Dependabot opens update PRs weekly, grouped to avoid noise
+- A known-vulnerable dependency or image layer fails the check
+
 ---
 
 ## v0.2 — Auth & account basics
@@ -230,6 +282,30 @@ authenticated routes, redirect to login when missing/expired.
 
 - Refreshing the page keeps the session until the token expires
 - An expired/invalid token redirects to login instead of showing broken data
+
+### PROJ-004 · Type checking, SAST and quality dashboard
+
+**Target:** project **Version:** v0.2
+
+Deeper checks, timed for the auth work (first real logic and first
+security-sensitive code).
+
+- **Types:** mypy or pyright in "basic" mode in CI and pre-commit; tighten
+  per module later
+- **SAST:** Semgrep (Python + FastAPI rules) in CI — CodeQL needs GitHub
+  Advanced Security on a private repo
+- **Coverage:** pytest-cov in CI, reported on the PR; minimum threshold set
+  once v0.2 lands
+- **Quality dashboard:** pick one of Codacy / SonarQube Cloud / Codecov (or
+  none) — check free-tier limits for private repos before choosing
+
+**Depends on:** PROJ-002.
+
+**Acceptance criteria:**
+
+- Type and Semgrep checks are required on `main` and green on the current code
+- Coverage percentage visible on every PR
+- Dashboard decision recorded here (tool chosen or explicitly skipped)
 
 ---
 
@@ -752,7 +828,7 @@ Change credentials (already v0.2), plus export and delete-account actions.
 
 ## v1.0 — Cutover
 
-### PROJ-002 · One-time company import script
+### PROJ-005 · One-time company import script
 
 **Target:** project **Version:** v1.0
 
@@ -766,7 +842,7 @@ Script importing `config.yaml`'s ~40 companies into `Companies`/`Source`.
   and the `dynamic` entries) map to `custom` or `scraper` per their current
   `main.py`/`ats_api.py` handling
 
-### PROJ-003 · Retire script-run CI workflows
+### PROJ-006 · Retire script-run CI workflows
 
 **Target:** project **Version:** v1.0
 
@@ -777,7 +853,7 @@ Confirm `daily.yml`/`full-scan.yml` are fully retargeted to build/deploy
 
 - No workflow step runs the old script
 
-### PROJ-004 · Decommission Gmail SMTP + Notion
+### PROJ-007 · Decommission Gmail SMTP + Notion
 
 **Target:** project **Version:** v1.0
 
@@ -790,11 +866,11 @@ old script's path.
 - Old secrets (Gmail app password, Notion token) revoked/removed from repo
   and droplet
 
-### PROJ-005 · Go-live checklist
+### PROJ-008 · Go-live checklist
 
 **Target:** project **Version:** v1.0
 
-Final cutover: confirm all v0.x tickets closed, run PROJ-002, disable the
+Final cutover: confirm all v0.x tickets closed, run PROJ-005, disable the
 old script's trigger, monitor first live scheduled run end-to-end.
 
 **Acceptance criteria:**
