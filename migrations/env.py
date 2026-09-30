@@ -10,7 +10,8 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import create_engine, pool
-from sqlalchemy.engine import make_url
+
+from job_lighthouse_backend.common.db import normalize_database_url
 
 config = context.config
 
@@ -29,10 +30,7 @@ def get_database_url() -> str:
             "DATABASE_URL is not set. See README → Local database & migrations."
         )
     # Migrations always run on the sync psycopg (v3) driver.
-    parsed = make_url(url)
-    if parsed.drivername in ("postgres", "postgresql"):
-        parsed = parsed.set(drivername="postgresql+psycopg")
-    return parsed.render_as_string(hide_password=False)
+    return normalize_database_url(url)
 
 
 def run_migrations_offline() -> None:

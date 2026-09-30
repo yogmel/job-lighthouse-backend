@@ -47,3 +47,22 @@ with `COMPOSE="docker compose"`.
 - Migrations are written by hand (`op.create_table(...)`). No autogenerate
   yet.
 - Every migration needs a working `downgrade()`.
+
+## Services
+
+Both services are FastAPI apps in `src/job_lighthouse_backend/`, sharing
+`common/` (settings, DB engine, app factory).
+
+| Service | Module | Local port |
+| --- | --- | --- |
+| Job Runner | `job_runner.main:app` | 8001 |
+
+```sh
+make run-job-runner   # needs DATABASE_URL (from .env) and a running Postgres
+curl localhost:8001/health
+make test
+```
+
+- Settings come from env vars only. Required: `DATABASE_URL`.
+- On startup each service runs `SELECT 1`. If Postgres is unreachable it
+  logs the error and exits non-zero.
