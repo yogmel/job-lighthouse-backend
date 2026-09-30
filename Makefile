@@ -7,7 +7,7 @@ endif
 COMPOSE ?= docker-compose
 ALEMBIC := uv run alembic
 
-.PHONY: certs up down logs db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner run-companies test
+.PHONY: certs up down logs db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner run-companies test hooks lint
 
 certs: ## Create a self-signed TLS cert for local Nginx (nginx/certs/, git-ignored)
 	@mkdir -p nginx/certs
@@ -54,3 +54,11 @@ run-companies: ## Run the Companies Service locally on :8002 (reload on change)
 
 test: ## Run the test suite (DB tests need `make db-up`)
 	uv run pytest
+
+hooks: ## Install the pre-commit git hooks (Ruff, gitleaks, uv lock --check)
+	uv run pre-commit install
+
+lint: ## Run the CI lint checks locally
+	uv lock --check
+	uv run ruff check .
+	uv run ruff format --check .

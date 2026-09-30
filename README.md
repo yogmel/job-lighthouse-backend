@@ -118,6 +118,37 @@ make down
 - Optional: `NGINX_HTTP_PORT`, `NGINX_HTTPS_PORT` to change host ports
   (a value like `127.0.0.1:8443` also sets the bind address).
 
+## CI & hooks
+
+`.github/workflows/ci.yml` runs on every PR and every push to `main`:
+
+| Job | Checks |
+| --- | --- |
+| `lint` | `uv lock --check`, `ruff check`, `ruff format --check` |
+| `test` | single Alembic head, `upgrade head` → `downgrade base` → `upgrade head`, `pytest` against a Postgres 17 service |
+| `docker-build` | `docker build` (no push) |
+| `pr-title` | PR title starts with `BE-`/`FE-`/`PROJ-` + number (`pr-title.yml`) |
+
+Run the same checks locally: `make lint`, `make test`.
+
+**Local hooks**
+
+- `make hooks` installs pre-commit: Ruff (lint + format), gitleaks,
+  `uv lock --check`. A commit with a Ruff error is blocked.
+- Keep the Ruff `rev` in `.pre-commit-config.yaml` in step with the Ruff
+  version in `uv.lock`.
+- `.claude/settings.json` (committed) runs Ruff on each Python file Claude
+  Code edits and denies edits to `.env*` (this also covers `.env.example`;
+  edit it by hand). Personal overrides go in `.claude/settings.local.json`
+  (git-ignored).
+
+**Branch rules on `main`**
+
+- PR required, no direct push, no force push, no deletion.
+- Required checks: `lint`, `test`, `docker-build`, `pr-title`.
+- On a private repo, rulesets and branch protection need **GitHub Pro**
+  (or Team). Without that, these rules are convention only.
+
 ## Deploy
 
 Push to `main` builds the image, pushes it to GHCR (`sha-<commit>` tag) and

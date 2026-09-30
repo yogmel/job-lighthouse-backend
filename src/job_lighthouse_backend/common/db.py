@@ -18,9 +18,7 @@ def normalize_database_url(url: str) -> str:
 
 
 def create_engine(database_url: str) -> AsyncEngine:
-    return create_async_engine(
-        normalize_database_url(database_url), pool_pre_ping=True
-    )
+    return create_async_engine(normalize_database_url(database_url), pool_pre_ping=True)
 
 
 async def check_connection(engine: AsyncEngine) -> None:

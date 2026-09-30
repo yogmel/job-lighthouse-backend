@@ -1,0 +1,24 @@
+# PROJ-002: PR titles start with a ticket ID, e.g. "PROJ-002: add CI checks".
+name: pr-title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Title starts with BE-/FE-/PROJ- ticket ID
+        env:
+          # Via env, never inlined into the script: the title is user input.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [[ ! "$TITLE" =~ ^(BE|FE|PROJ)-[0-9]+ ]]; then
+            echo "::error::PR title must start with a ticket ID (BE-/FE-/PROJ-), got: $TITLE"
+            exit 1
+          fi
