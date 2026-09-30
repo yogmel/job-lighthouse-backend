@@ -13,6 +13,7 @@ dist/
 nginx/certs/
 
 # Tooling
+.claude/settings.local.json
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/

@@ -1,0 +1,86 @@
+# PROJ-002: checks on every PR and push to main. Branch rules on main
+# require these jobs to pass (see README → CI and hooks).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - name: uv.lock is up to date
+        run: uv lock --check
+      - name: Ruff lint
+        run: uv run --frozen ruff check --output-format=github .
+      - name: Ruff format
+        run: uv run --frozen ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      # Throwaway CI database, not a real credential.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Single Alembic head
+        run: |
+          heads="$(uv run --frozen alembic heads)"
+          echo "$heads"
+          if [ "$(echo "$heads" | grep -c .)" -ne 1 ]; then
+            echo "::error::Expected exactly one Alembic head"
+            exit 1
+          fi
+      - name: Migration round-trip
+        run: |
+          uv run --frozen alembic upgrade head
+          uv run --frozen alembic downgrade base
+          uv run --frozen alembic upgrade head
+      - name: pytest
+        run: uv run --frozen pytest
+
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

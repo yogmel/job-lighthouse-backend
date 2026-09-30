@@ -5,18 +5,18 @@ Revises: b584fdfc1cbb
 Create Date: 2026-09-30 11:56:37.077415
 
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
-
 # revision identifiers, used by Alembic.
-revision: str = '5892bf8c8608'
-down_revision: Union[str, Sequence[str], None] = 'b584fdfc1cbb'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "5892bf8c8608"
+down_revision: str | Sequence[str] | None = "b584fdfc1cbb"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
