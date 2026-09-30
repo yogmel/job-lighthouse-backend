@@ -13,8 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ConfigDict, HttpUrl
-from sqlalchemy import select
+from pydantic import BaseModel, ConfigDict, HttpUrl, model_validator
+from sqlalchemy import column, select, table, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,6 +51,9 @@ router = APIRouter(
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 
+# Owned by the Job Runner; only pausing writes to it from here.
+_jobs = table("jobs", column("user_id"), column("company_id"), column("active"))
+
 
 class CompanyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -70,6 +73,30 @@ class CompanyCreate(BaseModel):
     website_url: HttpUrl
     active: bool = True
     source: ManualSource
+
+
+class CompanyUpdate(BaseModel):
+    """Partial update: only the fields sent are changed."""
+
+    name: NonEmptyStr | None = None
+    tier: int | None = None
+    website_url: HttpUrl | None = None
+    active: bool | None = None
+    # Replaces the whole source; no merging with the stored one.
+    source: ManualSource | None = None
+
+    @model_validator(mode="after")
+    def _check_fields(self) -> "CompanyUpdate":
+        if not self.model_fields_set:
+            raise ValueError("Provide at least one field to change")
+        nulls = sorted(f for f in self.model_fields_set if getattr(self, f) is None)
+        if nulls:
+            raise ValueError(f"Cannot be null: {', '.join(nulls)}")
+        return self
+
+
+def _not_found() -> HTTPException:
+    return HTTPException(status.HTTP_404_NOT_FOUND, detail="Company not found")
 
 
 @router.get("", response_model=list[CompanyOut])
@@ -115,4 +142,45 @@ async def create_company(
         ) from None
     # Load server defaults (id, added_at).
     await session.refresh(company)
+    return CompanyOut.model_validate(company)
+
+
+@router.put(
+    "/{company_id}",
+    response_model=CompanyOut,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Malformed source"},
+        status.HTTP_404_NOT_FOUND: {"description": "Company not found"},
+    },
+)
+async def update_company(
+    company_id: uuid.UUID,
+    body: CompanyUpdate,
+    user_id: CurrentUserId,
+    session: Session,
+) -> CompanyOut:
+    """Change any of name, tier, website_url, active, source.
+
+    - Another user's company is a 404, same as a missing one.
+    - Pausing (``active: false``) also sets the company's jobs inactive.
+      Resuming (``active: true``) does not restore them.
+    """
+    company = await session.scalar(
+        select(Company).where(Company.id == company_id, Company.user_id == user_id)
+    )
+    if company is None:
+        raise _not_found()
+
+    changes = body.model_dump(mode="json", exclude_unset=True)
+    for field, value in changes.items():
+        setattr(company, field, value)
+
+    if changes.get("active") is False:
+        await session.execute(
+            update(_jobs)
+            .where(_jobs.c.company_id == company_id, _jobs.c.user_id == user_id)
+            .values(active=False)
+        )
+
+    await session.commit()
     return CompanyOut.model_validate(company)
