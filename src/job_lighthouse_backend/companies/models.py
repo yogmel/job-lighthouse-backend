@@ -2,8 +2,10 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import DateTime, Text, func
+from sqlalchemy import DateTime, ForeignKey, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from job_lighthouse_backend.common.db import Base
@@ -24,3 +26,24 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class Company(Base):
+    __tablename__ = "companies"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=func.gen_random_uuid()
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(Text)
+    tier: Mapped[int]
+    added_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    website_url: Mapped[str] = mapped_column(Text)
+    # False = stop tracking; row and jobs are kept.
+    active: Mapped[bool] = mapped_column(server_default="true")
+    # Discriminated union on `kind`, validated by ``sources.Source``.
+    source: Mapped[dict[str, Any]] = mapped_column(JSONB)
