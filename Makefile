@@ -7,7 +7,7 @@ endif
 COMPOSE ?= docker-compose
 ALEMBIC := uv run alembic
 
-.PHONY: db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner test
+.PHONY: db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner run-companies test
 
 db-up: ## Start local Postgres and wait until it is healthy
 	$(COMPOSE) up -d --wait postgres
@@ -33,6 +33,9 @@ migrate-history: ## List all revisions
 
 run-job-runner: ## Run the Job Runner Service locally on :8001 (reload on change)
 	uv run uvicorn job_lighthouse_backend.job_runner.main:app --reload --port 8001
+
+run-companies: ## Run the Companies Service locally on :8002 (reload on change)
+	uv run uvicorn job_lighthouse_backend.companies.main:app --reload --port 8002
 
 test: ## Run the test suite (DB tests need `make db-up`)
 	uv run pytest
