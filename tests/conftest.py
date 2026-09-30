@@ -12,6 +12,7 @@ from collections.abc import Callable, Iterator
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from psycopg.types.json import Jsonb
 from sqlalchemy.engine import make_url
 
 from job_lighthouse_backend.common.db import normalize_database_url
@@ -111,3 +112,29 @@ def auth_header() -> Callable[[uuid.UUID], dict[str, str]]:
 
     settings = Settings(database_url="unused", jwt_secret=TEST_JWT_SECRET)
     return lambda user_id: {"Authorization": f"Bearer {issue_token(user_id, settings)}"}
+
+
+BOARD_SOURCE = {"kind": "board", "board": "greenhouse", "board_id": "stripe"}
+
+
+@pytest.fixture
+def make_company(db: psycopg.Connection) -> Callable[..., uuid.UUID]:
+    """Insert a company for ``user_id``. Removed with its user (cascade)."""
+
+    def _make(
+        user_id: uuid.UUID,
+        name: str = "Stripe",
+        tier: int = 1,
+        website_url: str = "https://stripe.com/",
+        active: bool = True,
+        source: dict | None = None,
+    ) -> uuid.UUID:
+        row = db.execute(
+            "INSERT INTO companies (user_id, name, tier, website_url, active, source)"
+            " VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (user_id, name, tier, website_url, active, Jsonb(source or BOARD_SOURCE)),
+        ).fetchone()
+        assert row is not None
+        return row[0]
+
+    return _make
