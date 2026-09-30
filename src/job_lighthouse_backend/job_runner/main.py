@@ -2,4 +2,7 @@
 
 from job_lighthouse_backend.common.app import create_app
 
+from . import jobs
+
 app = create_app("Job Runner Service")
+app.include_router(jobs.router)

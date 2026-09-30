@@ -8,6 +8,7 @@ database, so each test uses unique emails and removes the users it creates.
 import os
 import uuid
 from collections.abc import Callable, Iterator
+from datetime import datetime
 
 import psycopg
 import pytest
@@ -78,6 +79,20 @@ def companies_client(
 
 
 @pytest.fixture
+def runner_client(
+    db: psycopg.Connection, unique_email: _EmailFactory
+) -> Iterator[TestClient]:
+    from job_lighthouse_backend.job_runner.main import app
+
+    with TestClient(app) as client:
+        yield client
+    db.execute(
+        "DELETE FROM users WHERE lower(email) = ANY(%s)",
+        ([e.lower() for e in unique_email.issued],),
+    )
+
+
+@pytest.fixture
 def make_user(
     db: psycopg.Connection, unique_email: _EmailFactory
 ) -> Iterator[Callable[..., dict]]:
@@ -133,6 +148,38 @@ def make_company(db: psycopg.Connection) -> Callable[..., uuid.UUID]:
             "INSERT INTO companies (user_id, name, tier, website_url, active, source)"
             " VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
             (user_id, name, tier, website_url, active, Jsonb(source or BOARD_SOURCE)),
+        ).fetchone()
+        assert row is not None
+        return row[0]
+
+    return _make
+
+
+@pytest.fixture
+def make_job(db: psycopg.Connection) -> Callable[..., uuid.UUID]:
+    """Insert a job for ``user_id`` / ``company_id``. Removed with its user."""
+
+    def _make(
+        user_id: uuid.UUID,
+        company_id: uuid.UUID,
+        title: str = "Engineer",
+        active: bool = True,
+        date: datetime | None = None,
+    ) -> uuid.UUID:
+        row = db.execute(
+            "INSERT INTO jobs"
+            " (user_id, company_id, company, title, url, location, description,"
+            " active, date)"
+            " VALUES (%s, %s, 'Stripe', %s, %s, 'Remote', 'desc', %s,"
+            " coalesce(%s::timestamptz, now())) RETURNING id",
+            (
+                user_id,
+                company_id,
+                title,
+                f"https://example.com/jobs/{uuid.uuid4().hex}",
+                active,
+                date,
+            ),
         ).fetchone()
         assert row is not None
         return row[0]
