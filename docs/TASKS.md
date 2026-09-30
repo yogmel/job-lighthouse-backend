@@ -307,6 +307,17 @@ security-sensitive code).
 - Coverage percentage visible on every PR
 - Dashboard decision recorded here (tool chosen or explicitly skipped)
 
+### v0.2 follow-ups
+
+BE-011 – BE-015 are merged. Still to do:
+
+- **Open questions:** see SYSTEM_DESIGN.md → Auth & accounts → Open
+  questions. Update the code and that section once each is decided.
+- **`.env.example`:** add `JWT_SECRET` (required) and `GOOGLE_CLIENT_ID`
+  (optional), matching the README env block.
+- **Running tests locally:** use `make test`. Plain `uv run pytest` doesn't
+  load `.env`, so every DB test is skipped and the run still looks green.
+
 ---
 
 ## v0.3 — Manual company management

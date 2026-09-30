@@ -551,6 +551,55 @@ signing secret — no network call to the Auth module per request. The token
 carries `user_id`, which is already the join key on every table, so
 authorization is just "does this row's `user_id` match the token's."
 
+### Decisions made while building v0.2 (BE-011 – BE-015)
+
+- **JWT:** HS256, with `sub` = `user_id`, `iat` and `exp`. The secret is
+  `JWT_SECRET` and both services must use the same value. Tokens last
+  `JWT_TTL_SECONDS`, 7 days by default.
+- **Passwords:** hashed with Argon2id and must be 8–256 characters long.
+  Login still runs a hash check when the email is unknown, so response time
+  doesn't reveal whether the account exists.
+- **Signup returns a token** (201), so the user is logged in straight away
+  (FE-001).
+- **Signup's 409 on a duplicate email reveals that the email is
+  registered.** BE-011 asks for it. The "don't reveal" rule covers only
+  login and password reset.
+- **Login** gives the same 401 for an unknown email, a wrong password and a
+  Google-only account.
+- **Google sign-in** (`POST /auth/google`):
+  - The ID token is checked against `GOOGLE_CLIENT_ID`. If that variable is
+    not set, the route returns 503.
+  - It first looks up the account by `google_id`.
+  - If there's no match, it links to an existing account with the same email
+    **only if Google says the email is verified**. Otherwise it returns 409,
+    so an unverified Google account can't take over a password account.
+  - It also returns 409 if that email is already linked to another Google
+    account.
+- **`PUT /account`:**
+  - If the account has a password, changing the email or password needs
+    `current_password`.
+  - A missing or wrong `current_password` returns **403**, not 401, so the
+    frontend doesn't treat it as an expired session.
+  - Google-only accounts can change their email or set a first password with
+    just their token.
+  - Changing the email sets `email_verified = false`. An email already used
+    by another account returns 409.
+- **Responses** always go through a response model. An account is returned
+  as `id, email, email_verified, has_password, google_linked, created_at`.
+  `password_hash` is never included.
+
+### Open questions (v0.2 auth)
+
+- **Signup 409:** keep it (current behaviour, as BE-011 asks), or switch to
+  a neutral response plus an email once email sending exists (v0.6)?
+- **Linking Google to an existing password account:** is "Google says the
+  email is verified" enough? Or should the user also confirm with their
+  password?
+- **First password on a Google-only account:** it currently needs only a
+  valid token. Should it need a fresh Google sign-in instead?
+- **403 for a wrong `current_password`:** FE-003 must not log the user out
+  on it. Confirm the frontend agrees.
+
 ---
 
 ## Frontend

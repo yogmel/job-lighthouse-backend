@@ -42,5 +42,5 @@ target-version = "py313"
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "S"]
 
 [tool.ruff.lint.per-file-ignores]
-# pytest uses bare asserts.
-"tests/**" = ["S101"]
+# pytest uses bare asserts; test fixtures use fake passwords and tokens.
+"tests/**" = ["S101", "S105"]
