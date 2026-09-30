@@ -17,7 +17,7 @@ from sqlalchemy.engine import make_url
 from job_lighthouse_backend.common.db import normalize_database_url
 from job_lighthouse_backend.companies.auth.passwords import hash_password
 
-TEST_JWT_SECRET = "test-only-jwt-secret-not-for-production-use"
+TEST_JWT_SECRET = "test-only-jwt-secret-not-for-production-use"  # noqa: S105 -- test fixture
 
 needs_db = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"), reason="needs Postgres"
@@ -85,7 +85,7 @@ def make_user(
 
     def _make(
         email: str | None = None,
-        password: str | None = "correct horse battery staple",
+        password: str | None = "correct horse battery staple",  # noqa: S107 -- test fixture
         google_id: str | None = None,
     ) -> dict:
         email = email or unique_email()
