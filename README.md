@@ -126,10 +126,14 @@ make down
 | --- | --- |
 | `lint` | `uv lock --check`, `ruff check`, `ruff format --check` |
 | `test` | single Alembic head, `upgrade head` → `downgrade base` → `upgrade head`, `pytest` against a Postgres 17 service |
-| `docker-build` | `docker build` (no push) |
-| `pr-title` | PR title starts with `BE-`/`FE-`/`PROJ-` + number (`pr-title.yml`) |
+| `docker-build` | `docker build` (no push) + Trivy image scan |
+| `gitleaks` | secrets in the branch's full git history |
+| `pip-audit` | known CVEs in `uv.lock` (all groups) |
+| `pr-title` | PR title starts with `BE-`/`FE-`/`PROJ-` + number (`pr-title.yml`); skipped for Dependabot |
 
-Run the same checks locally: `make lint`, `make test`.
+Run the same checks locally: `make lint`, `make test`, `make audit`,
+`make secrets`, `make scan-image` (the last two need `gitleaks` / `trivy`,
+e.g. `brew install gitleaks trivy`).
 
 **Local hooks**
 
@@ -145,9 +149,49 @@ Run the same checks locally: `make lint`, `make test`.
 **Branch rules on `main`**
 
 - PR required, no direct push, no force push, no deletion.
-- Required checks: `lint`, `test`, `docker-build`, `pr-title`.
+- Required checks: `lint`, `test`, `docker-build`, `gitleaks`, `pip-audit`,
+  `pr-title`.
 - On a private repo, rulesets and branch protection need **GitHub Pro**
   (or Team). Without that, these rules are convention only.
+
+## Security scanning
+
+Works on a private repo without GitHub Advanced Security (PROJ-003).
+
+| What | Where | Fails on |
+| --- | --- | --- |
+| Secrets | gitleaks in CI (full history) and pre-commit | any finding |
+| Dependencies | `pip-audit` in CI; Dependabot updates + alerts | any known CVE |
+| Code | Ruff `S` (Bandit) rules, part of `ruff check` | any finding |
+| Image | Trivy in CI (`docker-build`) and `deploy.yml` before push | HIGH/CRITICAL with a fix available |
+
+- **False positives**
+  - Ruff: `# noqa: S608 -- <reason>` on the line. Tests ignore `S101`
+    (asserts) in `pyproject.toml`.
+  - gitleaks: add the finding's fingerprint to `.gitleaksignore` with a
+    comment. A real leaked secret must be **rotated**, not ignored.
+  - Trivy: add the ID to `.trivyignore` with a reason and a revisit date.
+    Prefer a fix first.
+- **Image hardening**: the `Dockerfile` runs `apt-get upgrade` and removes
+  the system `pip`, which cleared the fixable HIGHs in `python:3.13-slim`.
+  The upgrade layer is cached until the base image digest changes, so if
+  Trivy goes red on a Debian fix that a rebuild doesn't pick up: wait for
+  the upstream base image rebuild, or add a `.trivyignore` entry with a
+  revisit date.
+- **Dependabot skips** Postgres majors (need a data migration) and Python
+  minor/major bumps (also touch `.python-version` / `requires-python`).
+- **Dependabot** (`.github/dependabot.yml`): weekly on Monday for `uv`,
+  Dockerfile, `docker-compose.yml` and GitHub Actions. Grouped: one
+  minor/patch PR and one major PR per ecosystem at most.
+- **Dependabot alerts** are a repo setting, not a file. Turn on once:
+  Settings → Code security → *Dependabot alerts* and *Dependabot security
+  updates*.
+- **Version pins** to bump together:
+  - gitleaks: `GITLEAKS_VERSION` in `ci.yml` and `rev` in
+    `.pre-commit-config.yaml`
+  - Trivy: `trivy-action` commit SHA and `version` in `ci.yml` and
+    `deploy.yml` (pinned by SHA: its tags were hijacked once)
+  - pip-audit: version in `ci.yml` and the `Makefile`
 
 ## Deploy
 

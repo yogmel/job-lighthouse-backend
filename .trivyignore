@@ -1,0 +1,6 @@
+# PROJ-003: Trivy findings we accept. One ID per line, each with a reason
+# and a date to revisit. Prefer fixing (base image bump, apt upgrade,
+# dependency bump) over adding a line here.
+#
+# Example:
+# CVE-2026-00000  # not reachable: we never call X; revisit 2026-12-01
