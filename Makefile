@@ -7,7 +7,7 @@ endif
 COMPOSE ?= docker-compose
 ALEMBIC := uv run alembic
 
-.PHONY: certs up down logs db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner run-companies test
+.PHONY: certs up down logs db-up db-down migrate-up migrate-down migrate-new migrate-current migrate-history run-job-runner run-companies test hooks lint audit secrets scan-image
 
 certs: ## Create a self-signed TLS cert for local Nginx (nginx/certs/, git-ignored)
 	@mkdir -p nginx/certs
@@ -54,3 +54,23 @@ run-companies: ## Run the Companies Service locally on :8002 (reload on change)
 
 test: ## Run the test suite (DB tests need `make db-up`)
 	uv run pytest
+
+hooks: ## Install the pre-commit git hooks (Ruff, gitleaks, uv lock --check)
+	uv run pre-commit install
+
+lint: ## Run the CI lint checks locally
+	uv lock --check
+	uv run ruff check .
+	uv run ruff format --check .
+
+audit: ## Check locked dependencies for known CVEs (same as CI's pip-audit job)
+	uv export --frozen --no-emit-project --format requirements-txt -o .audit-requirements.txt
+	uvx pip-audit@2.10.1 --strict --require-hashes --disable-pip -r .audit-requirements.txt; \
+		status=$$?; rm -f .audit-requirements.txt; exit $$status
+
+secrets: ## Scan the full git history for secrets (needs gitleaks installed)
+	gitleaks git --redact --verbose --exit-code 1 .
+
+scan-image: ## Build the image and scan it with Trivy (needs trivy installed)
+	docker build -t job-lighthouse-backend:scan .
+	trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --ignorefile .trivyignore job-lighthouse-backend:scan
