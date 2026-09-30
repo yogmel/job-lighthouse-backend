@@ -174,6 +174,12 @@ Works on a private repo without GitHub Advanced Security (PROJ-003).
     Prefer a fix first.
 - **Image hardening**: the `Dockerfile` runs `apt-get upgrade` and removes
   the system `pip`, which cleared the fixable HIGHs in `python:3.13-slim`.
+  The upgrade layer is cached until the base image digest changes, so if
+  Trivy goes red on a Debian fix that a rebuild doesn't pick up: wait for
+  the upstream base image rebuild, or add a `.trivyignore` entry with a
+  revisit date.
+- **Dependabot skips** Postgres majors (need a data migration) and Python
+  minor/major bumps (also touch `.python-version` / `requires-python`).
 - **Dependabot** (`.github/dependabot.yml`): weekly on Monday for `uv`,
   Dockerfile, `docker-compose.yml` and GitHub Actions. Grouped: one
   minor/patch PR and one major PR per ecosystem at most.

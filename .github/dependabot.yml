@@ -26,6 +26,11 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # A Python version jump (3.13 -> 3.14) is a deliberate change: it also
+    # touches .python-version and requires-python.
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       docker:
         patterns: ["*"]
@@ -36,6 +41,11 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # A Postgres major needs a data migration (pg_upgrade / dump+restore);
+    # a plain image bump would not start on the old data directory.
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
     groups:
       docker-compose:
         patterns: ["*"]
