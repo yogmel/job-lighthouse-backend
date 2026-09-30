@@ -24,6 +24,9 @@ DATABASE_URL=postgresql+psycopg://lighthouse:change-me@localhost:5432/lighthouse
 JWT_SECRET=change-me
 # JWT_TTL_SECONDS=604800        # optional, default 7 days
 # GOOGLE_CLIENT_ID=...          # needed for POST /auth/google
+
+# Frontend origins allowed by CORS, comma-separated. Unset: none.
+CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```
 
 - `DATABASE_URL` is required. Alembic reads it only from the environment.
