@@ -17,7 +17,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# No ORM models yet; migrations are written by hand. Revisit in BE-002.
+# No ORM models yet; migrations are written by hand. Revisit when the
+# services add models (BE-007 / BE-008).
 target_metadata = None
 
 
