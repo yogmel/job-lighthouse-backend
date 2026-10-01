@@ -409,6 +409,19 @@ backend code on `main` as of BE-011 – BE-015.
   the `Authorization` and `Content-Type` headers. **Not implemented yet**; see
   TASKS.md → v0.2 follow-ups.
 
+### Config request/response shapes
+
+| Endpoint      | Request body                                                           | Success      |
+| ------------- | ---------------------------------------------------------------------- | ------------ |
+| `GET /config` | none                                                                   | `200 Config` |
+| `PUT /config` | `{ keywords_include, keywords_exclude, location, cron, profile }` (all required) | `200 Config` |
+
+- `Config` is the full [Config](#config) row.
+- The row is created with defaults on the first `GET` or `PUT`: empty
+  keywords, location and profile, `cron: "0 7 * * *"`, `profile_version: 1`.
+- `PUT` replaces every editable field. `profile_version` is server-owned and
+  goes up by one only when `profile` actually changes.
+
 ---
 
 ## Services

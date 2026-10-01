@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Text, func
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from job_lighthouse_backend.common.db import Base
@@ -16,7 +17,33 @@ from job_lighthouse_backend.common.db import Base
 # keys below resolve. The runner reads ``Company`` but never writes it.
 from job_lighthouse_backend.companies.models import Company, User
 
-__all__ = ["Company", "Job", "Run", "RunCompanyResult", "User"]
+__all__ = ["Company", "Config", "Job", "Run", "RunCompanyResult", "User"]
+
+
+class Config(Base):
+    __tablename__ = "config"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=func.gen_random_uuid()
+    )
+    # One config per user.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), unique=True
+    )
+    keywords_include: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), server_default="{}"
+    )
+    # Word-boundary matched, applied at scrape time.
+    keywords_exclude: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), server_default="{}"
+    )
+    location: Mapped[str] = mapped_column(Text)
+    # Cron expression, read by the runner's tick loop.
+    cron: Mapped[str] = mapped_column(Text)
+    # Markdown.
+    profile: Mapped[str] = mapped_column(Text, server_default="")
+    # Bumped on every profile edit. No history of past texts is kept.
+    profile_version: Mapped[int] = mapped_column(server_default="1")
 
 
 class Job(Base):
