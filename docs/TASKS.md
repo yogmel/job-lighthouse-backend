@@ -9,7 +9,7 @@ IDs: `BE-` backend repo, `FE-` frontend repo, `PROJ-` cross-cutting/repo-less.
 
 ## v0.1 — Foundations
 
-### BE-001 · Set up migration tooling
+### ~~BE-001 · Set up migration tooling~~
 
 **Target:** backend **Version:** v0.1
 
@@ -21,7 +21,7 @@ Postgres instance, usable by both services.
 - `migrate up`/`down` commands run against a local Postgres
 - Empty baseline migration committed
 
-### BE-002 · Users + PasswordResetToken schema
+### ~~BE-002 · Users + PasswordResetToken schema~~
 
 **Target:** backend **Version:** v0.1
 
@@ -32,7 +32,7 @@ Migration for `Users` and `PasswordResetToken` tables per SYSTEM_DESIGN.md.
 - Both tables created with documented columns/types
 - FK `PasswordResetToken.user_id -> Users.id`
 
-### BE-003 · Config schema
+### ~~BE-003 · Config schema~~
 
 **Target:** backend **Version:** v0.1
 
@@ -44,7 +44,7 @@ Migration for `Config` (`keywords_include`, `keywords_exclude`, `location`,
 - Table created, `user_id` FK present
 - `keywords_include`/`keywords_exclude` stored as arrays
 
-### BE-004 · Companies schema
+### ~~BE-004 · Companies schema~~
 
 **Target:** backend **Version:** v0.1
 
@@ -55,7 +55,7 @@ Migration for `Companies`, `source` as `jsonb`.
 - Table created with documented columns
 - `source` column is `jsonb`, no app-layer validation yet (that's v0.3+)
 
-### BE-005 · Jobs schema
+### ~~BE-005 · Jobs schema~~
 
 **Target:** backend **Version:** v0.1
 
@@ -66,7 +66,7 @@ Migration for `Jobs`.
 - Table created with documented columns
 - FK `Job.company_id -> Companies.id`
 
-### BE-006 · Runs + RunCompanyResult schema
+### ~~BE-006 · Runs + RunCompanyResult schema~~
 
 **Target:** backend **Version:** v0.1
 
@@ -77,7 +77,7 @@ Migration for `Runs` and `RunCompanyResult`.
 - Both tables created
 - FKs `RunCompanyResult.run_id -> Runs.id`, `.company_id -> Companies.id`
 
-### BE-007 · Scaffold Job Runner Service
+### ~~BE-007 · Scaffold Job Runner Service~~
 
 **Target:** backend **Version:** v0.1
 
@@ -89,7 +89,7 @@ env), health-check endpoint.
 - `GET /health` returns 200
 - Connects to Postgres on startup, fails loudly if it can't
 
-### BE-008 · Scaffold Companies Service
+### ~~BE-008 · Scaffold Companies Service~~
 
 **Target:** backend **Version:** v0.1
 
@@ -100,7 +100,7 @@ Same as BE-007, for the Companies Service.
 - `GET /health` returns 200
 - Connects to Postgres on startup, fails loudly if it can't
 
-### BE-009 · Docker Compose baseline
+### ~~BE-009 · Docker Compose baseline~~
 
 **Target:** backend **Version:** v0.1
 
@@ -112,7 +112,7 @@ for secrets.
 - `docker compose up` brings up all three, health checks pass
 - Services read DB URL from compose-provided env vars
 
-### BE-010 · Nginx reverse proxy
+### ~~BE-010 · Nginx reverse proxy~~
 
 **Target:** backend **Version:** v0.1
 
@@ -124,7 +124,7 @@ Nginx container in compose, routes by path prefix to each service.
 - Requests to `/config*`, `/jobs*`, `/runs*` route to Job Runner Service
 - Config is TLS-ready (cert paths wired, self-signed OK locally)
 
-### PROJ-001 · CI/CD: build + deploy to droplet
+### ~~PROJ-001 · CI/CD: build + deploy to droplet~~
 
 **Target:** project **Version:** v0.1
 
@@ -136,7 +136,7 @@ deploy to the droplet via Docker Compose.
 - Push to `main` produces a green deploy run
 - Droplet is running the pushed commit's images after the workflow finishes
 
-### PROJ-002 · CI checks, branch rules, local hooks
+### ~~PROJ-002 · CI checks, branch rules, local hooks~~
 
 **Target:** project **Version:** v0.1
 
@@ -165,7 +165,7 @@ Claude Code hooks.
 - `make hooks` installs pre-commit; a commit with a Ruff error is blocked
 - CI runtime stays under ~5 minutes
 
-### PROJ-003 · Secret, dependency and image scanning
+### ~~PROJ-003 · Secret, dependency and image scanning~~
 
 **Target:** project **Version:** v0.1
 
@@ -192,7 +192,7 @@ Security (so no GitHub secret scanning / CodeQL).
 
 ## v0.2 — Auth & account basics
 
-### BE-011 · POST /auth/signup (email+password)
+### ~~BE-011 · POST /auth/signup (email+password)~~
 
 **Target:** backend **Version:** v0.2
 
@@ -203,7 +203,7 @@ Hash + store password, create `Users` row.
 - Duplicate email returns a clear 409
 - Password stored as a hash, never plaintext
 
-### BE-012 · POST /auth/login + JWT issuing
+### ~~BE-012 · POST /auth/login + JWT issuing~~
 
 **Target:** backend **Version:** v0.2
 
@@ -214,19 +214,19 @@ Verify credentials, issue a signed JWT carrying `user_id`.
 - Wrong password/unknown email returns 401, no user enumeration in the message
 - Token verifiable with the shared signing secret
 
-### BE-013 · POST /auth/google
+### ~~BE-013 · POST /auth/google~~
 
 **Target:** backend **Version:** v0.2
 
-Google OAuth callback: verify token, find-or-create `Users` row by
-`google_id`, issue JWT.
+Verify the Google ID token the frontend posts (from Google Identity
+Services), find-or-create `Users` row by `google_id`, issue JWT.
 
 **Acceptance criteria:**
 
 - First-time Google login creates a `Users` row with `password_hash: null`
 - Repeat login matches the existing row, doesn't duplicate
 
-### BE-014 · Shared JWT validation middleware
+### ~~BE-014 · Shared JWT validation middleware~~
 
 **Target:** backend **Version:** v0.2
 
@@ -238,7 +238,7 @@ against the shared signing secret and injecting `user_id`.
 - Missing/invalid/expired token returns 401 on any protected route
 - Valid token makes `user_id` available to route handlers in both services
 
-### BE-015 · GET/PUT /account
+### ~~BE-015 · GET/PUT /account~~
 
 **Target:** backend **Version:** v0.2
 
@@ -249,7 +249,7 @@ Fetch and update own credentials (email, password).
 - `PUT` requires current password to change it
 - Response never includes `password_hash`
 
-### FE-001 · Sign up page
+### ~~FE-001 · Sign up page~~
 
 **Target:** frontend **Version:** v0.2
 
@@ -260,7 +260,7 @@ Email/password form + "Sign up with Google" button.
 - Successful signup redirects into the app, authenticated
 - Server validation errors (e.g. duplicate email) surface inline
 
-### FE-002 · Log in page
+### ~~FE-002 · Log in page~~
 
 **Target:** frontend **Version:** v0.2
 
@@ -271,7 +271,7 @@ Email/password form + Google login button.
 - Successful login redirects into the app, authenticated
 - Invalid credentials show an inline error
 
-### FE-003 · Session handling
+### ~~FE-003 · Session handling~~
 
 **Target:** frontend **Version:** v0.2
 
@@ -283,7 +283,7 @@ authenticated routes, redirect to login when missing/expired.
 - Refreshing the page keeps the session until the token expires
 - An expired/invalid token redirects to login instead of showing broken data
 
-### PROJ-004 · Type checking, SAST and quality dashboard
+### ~~PROJ-004 · Type checking, SAST and quality dashboard~~
 
 **Target:** project **Version:** v0.2
 
@@ -324,16 +324,22 @@ BE-011 – BE-015 are merged. Still to do:
 
 - **Open questions:** see SYSTEM_DESIGN.md → Auth & accounts → Open
   questions. Update the code and that section once each is decided.
-- **`.env.example`:** add `JWT_SECRET` (required) and `GOOGLE_CLIENT_ID`
-  (optional), matching the README env block.
-- **Running tests locally:** use `make test`. Plain `uv run pytest` doesn't
-  load `.env`, so every DB test is skipped and the run still looks green.
+- ~~**`.env.example`:** add `JWT_SECRET` (required) and `GOOGLE_CLIENT_ID`
+  (optional), matching the README env block.~~ Done.
+- ~~**Running tests locally:** use `make test`. Plain `uv run pytest` doesn't
+  load `.env`, so every DB test is skipped and the run still looks green.~~ Done: `make test` exists and README documents it.
+- ~~**CORS (blocks the deployed frontend):** neither service adds CORS
+  headers, and neither does Nginx. Browser calls from the Vercel origin fail
+  their preflight check, including FE-001 and FE-002 signup and login. Add
+  `CORSMiddleware` in the shared `create_app`. Read allowed origins from an
+  env var (e.g. `CORS_ALLOWED_ORIGINS`), and allow the `Authorization` and
+  `Content-Type` headers. Document the env var in `.env.example` and DEPLOY.md.~~ Done in #88 / #91.
 
 ---
 
 ## v0.3 — Manual company management
 
-### BE-016 · GET /companies
+### ~~BE-016 · GET /companies~~
 
 **Target:** backend **Version:** v0.3
 
@@ -343,7 +349,7 @@ List the authenticated user's companies.
 
 - Only returns rows for the requesting `user_id`
 
-### BE-017 · POST /companies (manual)
+### ~~BE-017 · POST /companies (manual)~~
 
 **Target:** backend **Version:** v0.3
 
@@ -355,7 +361,7 @@ no detection.
 - Rejects a malformed `source` (wrong discriminant/missing fields) with 400
 - `custom` kind rejected for now (v0.10)
 
-### BE-018 · PUT /companies/{id}
+### ~~BE-018 · PUT /companies/{id}~~
 
 **Target:** backend **Version:** v0.3
 
@@ -366,7 +372,7 @@ Edit an existing company (name, tier, source, active).
 - 404 if the company doesn't belong to the requesting user
 - Partial updates supported (e.g. tier-only change)
 
-### FE-004 · Companies list screen
+### ~~FE-004 · Companies list screen~~
 
 **Target:** frontend **Version:** v0.3
 
@@ -377,7 +383,7 @@ active state.
 
 - Empty state shown when no companies exist yet
 
-### FE-005 · Manual add-company form
+### ~~FE-005 · Manual add-company form~~
 
 **Target:** frontend **Version:** v0.3
 
@@ -388,7 +394,7 @@ scraper strategy + selectors).
 
 - Submitting calls `POST /companies` and the new row appears in the list
 
-### FE-006 · Edit company dialog
+### ~~FE-006 · Edit company dialog~~
 
 **Target:** frontend **Version:** v0.3
 
@@ -398,7 +404,7 @@ Edit name/tier/source from the list.
 
 - Changing tier shows the "re-groups jobs" note from the mockup
 
-### FE-007 · Pause/remove company actions
+### ~~FE-007 · Pause/remove company actions~~
 
 **Target:** frontend **Version:** v0.3
 
@@ -413,7 +419,7 @@ Row menu actions: pause (`active = false`) and remove.
 
 ## v0.4 — Runner pipeline (manual trigger)
 
-### BE-019 · Run lifecycle + advisory lock scaffolding
+### ~~BE-019 · Run lifecycle + advisory lock scaffolding~~
 
 **Target:** backend **Version:** v0.4
 
@@ -425,7 +431,7 @@ it `success`/`failed` when the pipeline finishes or throws.
 - Lock held for the run's duration, released in a `finally`
 - A run that throws mid-pipeline still closes the `Runs` row as `failed`
 
-### BE-020 · Fetch openings — board source
+### ~~BE-020 · Fetch openings — board source~~
 
 **Target:** backend **Version:** v0.4
 
@@ -437,7 +443,7 @@ Ashby/SmartRecruiters).
 - Returns a normalized list (title, url, location) per board type
 - Non-200/malformed response is treated as a fetch failure, not empty
 
-### BE-021 · Fetch openings — scraper source
+### ~~BE-021 · Fetch openings — scraper source~~
 
 **Target:** backend **Version:** v0.4
 
@@ -449,7 +455,7 @@ Playwright strategies).
 - Selectors from `Source.selectors` are used, not hardcoded
 - Selector/network failure is a fetch failure, not an empty result
 
-### BE-022 · Diff by URL + write new Jobs
+### ~~BE-022 · Diff by URL + write new Jobs~~
 
 **Target:** backend **Version:** v0.4
 
@@ -460,7 +466,7 @@ Compare fetched openings against stored `Jobs` by URL, insert new ones.
 - Existing URLs are never re-inserted or duplicated
 - New rows get `match_score`/`match_description` left unset (v0.5 fills them)
 
-### BE-023 · Close disappeared jobs
+### ~~BE-023 · Close disappeared jobs~~
 
 **Target:** backend **Version:** v0.4
 
@@ -474,7 +480,7 @@ table in SYSTEM_DESIGN.md.
 - `scraper` kind: only runs on a non-empty result
 - A failed fetch never closes any jobs for that company
 
-### BE-024 · Write RunCompanyResult
+### ~~BE-024 · Write RunCompanyResult~~
 
 **Target:** backend **Version:** v0.4
 
@@ -484,7 +490,7 @@ One row per company per run recording `status`/`jobs_found`/`error`.
 
 - Every company in the run gets exactly one row, regardless of outcome
 
-### BE-025 · POST /runs (manual trigger)
+### ~~BE-025 · POST /runs (manual trigger)~~
 
 **Target:** backend **Version:** v0.4
 
@@ -495,7 +501,7 @@ Wires BE-019 through BE-024 into one endpoint.
 - Calling it while a run is already in flight no-ops (lock contention)
 - Returns the created `Runs` row (at least its id/status)
 
-### BE-026 · GET /jobs
+### ~~BE-026 · GET /jobs~~
 
 **Target:** backend **Version:** v0.4
 
@@ -506,7 +512,7 @@ List jobs with filters: active, company, tier.
 - Only returns rows for the requesting `user_id`
 - Filters are combinable (e.g. active + tier)
 
-### FE-008 · Jobs board screen
+### ~~FE-008 · Jobs board screen~~
 
 **Target:** frontend **Version:** v0.4
 
@@ -544,7 +550,7 @@ Pipeline step 6: score each new job against `Config.profile`, write
 - Every job written by BE-022 in this run gets a score before step 7 commits
 - `Job.profile_version` matches the `Config.profile_version` used to score it
 
-### FE-009 · Settings → Profile tab
+### ~~FE-009 · Settings → Profile tab~~
 
 **Target:** frontend **Version:** v0.5
 
