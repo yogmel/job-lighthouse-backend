@@ -346,9 +346,9 @@ location?: string;
 
 | Method   | Path                          | Description                                              |
 | -------- | ----------------------------- | --------------------------------------------------------- |
-| `POST`   | `/auth/signup`                | create account (email+password or Google)                |
+| `POST`   | `/auth/signup`                | create an email+password account, issue JWT              |
 | `POST`   | `/auth/login`                 | authenticate, issue JWT                                  |
-| `POST`   | `/auth/google`                | Google OAuth callback                                     |
+| `POST`   | `/auth/google`                | verify a Google ID token, find/link/create account, issue JWT |
 | `POST`   | `/auth/password-reset/request`| send a password-reset email                              |
 | `POST`   | `/auth/password-reset/confirm`| set a new password from a reset token                    |
 | `GET`    | `/account`                    | fetch own account details                                |
@@ -366,6 +366,48 @@ location?: string;
 | `POST`   | `/runs`                       | trigger a run now (manual)                               |
 | `GET`    | `/runs`                       | run history for the dashboard                            |
 | `GET`    | `/runs/{id}/companies`        | per-company breakdown for one run (`RunCompanyResult`)   |
+
+### Auth & account request/response shapes
+
+The frontend is built against these (FE-001, FE-002, FE-003). They match the
+backend code on `main` as of BE-011 – BE-015.
+
+| Endpoint            | Request body                                        | Success                                      |
+| ------------------- | --------------------------------------------------- | -------------------------------------------- |
+| `POST /auth/signup` | `{ email, password }`                               | `201 { access_token, token_type: "bearer" }` |
+| `POST /auth/login`  | `{ email, password }`                               | `200 { access_token, token_type: "bearer" }` |
+| `POST /auth/google` | `{ id_token }` (from Google Identity Services)      | `200 { access_token, token_type: "bearer" }` |
+| `GET /account`      | none                                                | `200 Account`                                |
+| `PUT /account`      | `{ current_password?, email?, new_password? }` (at least one of `email`, `new_password`) | `200 Account` |
+
+- `Account` is `{ id, email, email_verified, has_password, google_linked, created_at }`.
+- `access_token` is the JWT. Its payload carries `sub` (the user id), `iat`
+  and `exp`. Send it as `Authorization: Bearer <token>` to both services.
+- Errors use FastAPI's `{ detail }` shape. `detail` strings are
+  human-readable and shown as-is. Don't match on their exact text.
+  - `401 { detail }`:
+    - bad credentials on login;
+    - an invalid Google token;
+    - a missing, invalid or expired JWT on any protected route. **This is the
+      only status that logs the user out.**
+  - `403 { detail }`: `PUT /account` with a missing or wrong
+    `current_password`. The frontend shows it on the current-password field
+    and keeps the session.
+  - `409 { detail }`:
+    - signup with an email that's already registered;
+    - `PUT /account` to an email another account uses;
+    - `/auth/google` when the email matches an existing account but Google
+      says it's **unverified**, or when the email is already linked to a
+      **different** Google account. A verified email is linked and returns
+      200.
+  - `422 { detail: [{ loc: ["body", "<field>"], msg }] }`: validation. The
+    frontend shows `msg` under `<field>`.
+  - `503 { detail }`: `/auth/google` when `GOOGLE_CLIENT_ID` isn't set on the
+    server.
+- **CORS:** the browser calls both services directly from the Vercel origin,
+  so both must answer preflight `OPTIONS` requests and allow that origin with
+  the `Authorization` and `Content-Type` headers. **Not implemented yet**; see
+  TASKS.md → v0.2 follow-ups.
 
 ---
 
@@ -597,8 +639,9 @@ authorization is just "does this row's `user_id` match the token's."
   password?
 - **First password on a Google-only account:** it currently needs only a
   valid token. Should it need a fresh Google sign-in instead?
-- **403 for a wrong `current_password`:** FE-003 must not log the user out
-  on it. Confirm the frontend agrees.
+- **403 for a wrong `current_password`:** resolved. The frontend agrees:
+  FE-003 logs out only on 401, and a 403 is shown on the current-password
+  field. See API design → Auth & account request/response shapes.
 
 ---
 
