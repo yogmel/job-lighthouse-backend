@@ -574,7 +574,7 @@ Jobs are never deleted, so `GET /jobs` grows without bound.
 
 ## v0.5 — Match scoring
 
-### BE-027 · Config.profile + GET/PUT /config
+### ~~BE-027 · Config.profile + GET/PUT /config~~
 
 **Target:** backend **Version:** v0.5
 
