@@ -130,6 +130,13 @@ Match scoring needs these (from v0.5):
 - `OPENAI_MODEL`: optional, `gpt-5-mini` by default. Must support
   structured outputs.
 
+Email needs these (from v0.6):
+
+- `RESEND_API_KEY`: optional. Without it, no email is sent.
+- `EMAIL_FROM`: required when `RESEND_API_KEY` is set, or the services
+  won't start. A sender on a domain verified in Resend, e.g.
+  `Job Lighthouse <digest@example.com>`.
+
 Also set these, so the compose Nginx binds to localhost only and leaves
 80/443 to the host Nginx:
 

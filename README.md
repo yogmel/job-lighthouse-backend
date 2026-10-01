@@ -29,6 +29,10 @@ JWT_SECRET=change-me
 # OPENAI_API_KEY=...
 # OPENAI_MODEL=gpt-5-mini       # optional, this is the default
 
+# Transactional email (Resend). Without a key, no email is sent.
+# RESEND_API_KEY=...
+# EMAIL_FROM=Job Lighthouse <digest@example.com>   # required with the key
+
 # Frontend origins allowed by CORS, comma-separated. Unset: none.
 CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```

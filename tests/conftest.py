@@ -32,6 +32,9 @@ def _jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
     # Never call the real LLM from tests, even if the shell has a key.
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    # Never send real email from tests either.
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.delenv("EMAIL_FROM", raising=False)
 
 
 def _sync_dsn() -> str:
