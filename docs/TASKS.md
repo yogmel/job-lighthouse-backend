@@ -612,7 +612,7 @@ Edit the markdown profile text.
 
 ## v0.6 — Notifications
 
-### BE-029 · Transactional email client
+### ~~BE-029 · Transactional email client~~
 
 **Target:** backend **Version:** v0.6
 
