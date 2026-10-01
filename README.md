@@ -25,6 +25,10 @@ JWT_SECRET=change-me
 # JWT_TTL_SECONDS=604800        # optional, default 7 days
 # GOOGLE_CLIENT_ID=...          # needed for POST /auth/google
 
+# Match scoring. Without a key, new jobs are stored unscored.
+# OPENAI_API_KEY=...
+# OPENAI_MODEL=gpt-5-mini       # optional, this is the default
+
 # Frontend origins allowed by CORS, comma-separated. Unset: none.
 CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```

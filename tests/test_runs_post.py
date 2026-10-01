@@ -1,4 +1,4 @@
-"""BE-025: POST /runs wires the whole v0.4 pipeline together."""
+"""BE-025: POST /runs wires the whole pipeline together (BE-028: scoring)."""
 
 import uuid
 from collections.abc import Iterator
@@ -12,7 +12,7 @@ from job_lighthouse_backend.job_runner.openings import FetchError, Opening
 from job_lighthouse_backend.job_runner.runs import lock_name
 from job_lighthouse_backend.job_runner.runs_api import get_fetcher
 
-from .conftest import BOARD_SOURCE, needs_db
+from .conftest import BOARD_SOURCE, TEST_JWT_SECRET, needs_db
 from .test_sync_close import SCRAPER_SOURCE
 
 pytestmark = needs_db
@@ -196,3 +196,58 @@ def test_default_fetcher_is_the_real_one():
     from job_lighthouse_backend.job_runner.company_run import fetch_openings
 
     assert get_fetcher() is fetch_openings
+
+
+def test_new_jobs_scored_through_api(
+    db, make_user, make_company, auth_header, fake_fetch
+):
+    from job_lighthouse_backend.job_runner.main import app
+    from job_lighthouse_backend.job_runner.runs_api import get_scorer
+    from job_lighthouse_backend.job_runner.scoring import Match
+
+    async def scorer(profile, posting):
+        return Match(score=90, description="fits")
+
+    user = make_user()
+    make_company(user["id"], source=_board("acme"))
+    db.execute(
+        "INSERT INTO config (user_id, location, cron, profile, profile_version)"
+        " VALUES (%s, '', '0 7 * * *', 'me', 4)",
+        (user["id"],),
+    )
+    url = _url()
+    fake_fetch.by_key = {"acme": [Opening("A", url)]}
+    app.dependency_overrides[get_fetcher] = lambda: fake_fetch
+    app.dependency_overrides[get_scorer] = lambda: scorer
+    try:
+        with TestClient(app) as c:
+            assert c.post("/runs", headers=auth_header(user["id"])).status_code == 201
+    finally:
+        app.dependency_overrides.clear()
+    row = db.execute(
+        "SELECT match_score, match_description, profile_version FROM jobs"
+        " WHERE url = %s",
+        (url,),
+    ).fetchone()
+    assert row == (90.0, "fits", 4)
+
+
+def test_scorer_needs_api_key():
+    from types import SimpleNamespace
+
+    from job_lighthouse_backend.common.settings import Settings
+    from job_lighthouse_backend.job_runner.runs_api import get_scorer
+
+    def request(**overrides):
+        settings = Settings(
+            database_url="unused", jwt_secret=TEST_JWT_SECRET, **overrides
+        )
+        state = SimpleNamespace(settings=settings)
+        return SimpleNamespace(app=SimpleNamespace(state=state))
+
+    assert get_scorer(request()) is None
+    with_key = request(openai_api_key="sk-test")
+    scorer = get_scorer(with_key)
+    assert scorer is not None
+    # Built once, then reused.
+    assert get_scorer(with_key) is scorer

@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 
 DEFAULT_JWT_TTL_SECONDS = 7 * 24 * 60 * 60
+DEFAULT_OPENAI_MODEL = "gpt-5-mini"
 
 
 class SettingsError(RuntimeError):
@@ -27,6 +28,9 @@ class Settings:
     jwt_ttl_seconds: int = DEFAULT_JWT_TTL_SECONDS
     # Only the Companies Service needs it (POST /auth/google).
     google_client_id: str | None = None
+    # Only the Job Runner needs it (match scoring). Unset: jobs stay unscored.
+    openai_api_key: str | None = None
+    openai_model: str = DEFAULT_OPENAI_MODEL
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -48,4 +52,6 @@ class Settings:
             jwt_secret=jwt_secret,
             jwt_ttl_seconds=jwt_ttl_seconds,
             google_client_id=os.environ.get("GOOGLE_CLIENT_ID") or None,
+            openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
+            openai_model=os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL,
         )

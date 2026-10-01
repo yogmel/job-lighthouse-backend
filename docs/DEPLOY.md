@@ -123,6 +123,13 @@ Auth needs these (from v0.2):
   headers in either Nginx: a duplicate header makes the browser reject
   the response.
 
+Match scoring needs these (from v0.5):
+
+- `OPENAI_API_KEY`: optional. Without it, runs still work but new jobs
+  are stored unscored, and stay unscored.
+- `OPENAI_MODEL`: optional, `gpt-5-mini` by default. Must support
+  structured outputs.
+
 Also set these, so the compose Nginx binds to localhost only and leaves
 80/443 to the host Nginx:
 
