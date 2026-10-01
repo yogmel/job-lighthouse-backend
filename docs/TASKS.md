@@ -517,6 +517,53 @@ List view with active/company/tier filters.
 - Empty state when no jobs match the current filters
 - Manual "run now" action calls `POST /runs`
 
+### v0.4 follow-ups
+
+BE-019 – BE-026 are merged. Found while building them:
+
+### PROJ-009 · Chromium in the Docker image for dynamic scrapes
+
+**Target:** project **Version:** v0.4
+
+The image has the `playwright` package but no browser, so every `scraper`
+source with `strategy: "dynamic"` fails in production. It fails safe: the
+company's `RunCompanyResult` is `failed` and no jobs are closed. Install
+Chromium (`playwright install --with-deps chromium`) where the non-root
+`app` user can read it.
+
+**Acceptance criteria:**
+
+- A `dynamic` scraper source fetches successfully in the deployed container
+- The image still passes the Trivy HIGH/CRITICAL gate
+
+### BE-045 · POST /runs can outlive the Nginx proxy timeout
+
+**Target:** backend **Version:** v0.4
+
+`POST /runs` runs the pipeline inside the request, and Nginx's default
+`proxy_read_timeout` (60s) applies to `/runs`. Many companies or slow
+`dynamic` scrapes (up to ~40s each) can exceed it: the client gets a 504
+while the run continues. Preferred fix: return 202 with the `running` row
+and run the pipeline in a background task (BE-019's lifecycle already
+allows it).
+
+**Acceptance criteria:**
+
+- A run longer than the proxy timeout still gives the client a usable response
+- Lock contention still no-ops (409); a failing run still closes as `failed`
+
+### BE-046 · Paginate GET /jobs
+
+**Target:** backend **Version:** v0.4
+
+Jobs are never deleted, so `GET /jobs` grows without bound.
+
+**Acceptance criteria:**
+
+- Bounded `limit` plus `offset` or a `(date, id)` keyset cursor
+- Works with the existing `active` / `company_id` / `tier` filters
+- Response tells the client whether more rows exist (coordinate with FE-008)
+
 ---
 
 ## v0.5 — Match scoring
