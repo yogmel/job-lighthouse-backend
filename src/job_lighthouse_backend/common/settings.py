@@ -31,6 +31,10 @@ class Settings:
     # Only the Job Runner needs it (match scoring). Unset: jobs stay unscored.
     openai_api_key: str | None = None
     openai_model: str = DEFAULT_OPENAI_MODEL
+    # Transactional email (Resend). Unset: no email is sent.
+    resend_api_key: str | None = None
+    # Sender, e.g. "Job Lighthouse <digest@example.com>". Required with the key.
+    email_from: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -47,6 +51,10 @@ class Settings:
             raise SettingsError("JWT_TTL_SECONDS must be an integer.") from None
         if jwt_ttl_seconds <= 0:
             raise SettingsError("JWT_TTL_SECONDS must be positive.")
+        resend_api_key = os.environ.get("RESEND_API_KEY") or None
+        email_from = os.environ.get("EMAIL_FROM") or None
+        if resend_api_key and not email_from:
+            raise SettingsError("EMAIL_FROM is required when RESEND_API_KEY is set.")
         return cls(
             database_url=database_url,
             jwt_secret=jwt_secret,
@@ -54,4 +62,6 @@ class Settings:
             google_client_id=os.environ.get("GOOGLE_CLIENT_ID") or None,
             openai_api_key=os.environ.get("OPENAI_API_KEY") or None,
             openai_model=os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL,
+            resend_api_key=resend_api_key,
+            email_from=email_from,
         )
