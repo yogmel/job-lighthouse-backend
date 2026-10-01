@@ -585,7 +585,7 @@ Add `profile`/`profile_version` to `Config`, expose read/write.
 - `profile_version` increments on every `profile` change
 - No history of past profile text is kept, per design
 
-### BE-028 · Match-scoring agent
+### ~~BE-028 · Match-scoring agent~~
 
 **Target:** backend **Version:** v0.5
 

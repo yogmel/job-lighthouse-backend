@@ -30,6 +30,8 @@ needs_db = pytest.mark.skipif(
 def _jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     # Startup requires JWT_SECRET. Tests never use a real one.
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
+    # Never call the real LLM from tests, even if the shell has a key.
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
 
 def _sync_dsn() -> str:
