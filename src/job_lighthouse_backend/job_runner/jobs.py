@@ -1,15 +1,22 @@
 """/jobs: the caller's stored job postings.
 
 Every query is scoped to the ``user_id`` in the JWT.
+
+Paged with a keyset cursor on ``(date, id)``, the list's sort order. Runs add
+jobs at the head of the list, so an offset would skip or repeat rows between
+pages; a cursor doesn't. The body stays a plain list: the next page's cursor
+comes in the ``X-Next-Cursor`` header, absent on the last page.
 """
 
+import base64
+import binascii
 import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_lighthouse_backend.common.auth import CurrentUserId
@@ -20,6 +27,29 @@ from .models import Company, Job
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 Session = Annotated[AsyncSession, Depends(get_session)]
+
+NEXT_CURSOR_HEADER = "X-Next-Cursor"
+DEFAULT_LIMIT = 50
+MAX_LIMIT = 200
+
+
+def encode_cursor(date: datetime, job_id: uuid.UUID) -> str:
+    """Opaque cursor for the page after the job ``(date, job_id)``."""
+    raw = f"{date.isoformat()}|{job_id}".encode()
+    return base64.urlsafe_b64encode(raw).decode()
+
+
+def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    """Inverse of ``encode_cursor``. Raises ``ValueError`` on a bad cursor."""
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode()).decode()
+    except (binascii.Error, UnicodeError) as exc:
+        raise ValueError("not base64") from exc
+    date_text, _, id_text = raw.partition("|")
+    date = datetime.fromisoformat(date_text)
+    if date.tzinfo is None:
+        raise ValueError("date has no timezone")
+    return date, uuid.UUID(id_text)
 
 
 class JobOut(BaseModel):
@@ -42,19 +72,39 @@ class JobOut(BaseModel):
     active: bool
 
 
-@router.get("", response_model=list[JobOut])
+@router.get(
+    "",
+    response_model=list[JobOut],
+    responses={
+        status.HTTP_200_OK: {
+            "headers": {
+                NEXT_CURSOR_HEADER: {
+                    "description": "Pass as `cursor` for the next page."
+                    " Absent on the last page.",
+                    "schema": {"type": "string"},
+                }
+            }
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Bad cursor"},
+    },
+)
 async def list_jobs(
     user_id: CurrentUserId,
     session: Session,
+    response: Response,
     active: bool | None = None,
     company_id: uuid.UUID | None = None,
     tier: int | None = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
+    cursor: str | None = None,
 ) -> list[JobOut]:
-    """The caller's jobs, newest ``date`` first.
+    """The caller's jobs, newest ``date`` first, at most ``limit`` per page.
 
     Filters are optional and combine with AND. With no ``active`` filter,
     closed postings are included. Another user's ``company_id`` matches
     nothing, so it returns ``[]``.
+
+    Keep the same filters when following ``X-Next-Cursor``.
     """
     query = select(Job).where(Job.user_id == user_id)
     if active is not None:
@@ -67,5 +117,22 @@ async def list_jobs(
         query = query.join(Company, Job.company_id == Company.id).where(
             Company.user_id == user_id, Company.tier == tier
         )
-    jobs = await session.scalars(query.order_by(Job.date.desc(), Job.id.desc()))
-    return [JobOut.model_validate(j) for j in jobs]
+    if cursor is not None:
+        try:
+            after = decode_cursor(cursor)
+        except ValueError:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid cursor"
+            ) from None
+        query = query.where(tuple_(Job.date, Job.id) < after)
+    # One extra row tells whether another page exists, without a count.
+    rows = (
+        await session.scalars(
+            query.order_by(Job.date.desc(), Job.id.desc()).limit(limit + 1)
+        )
+    ).all()
+    page = rows[:limit]
+    if len(rows) > limit:
+        last = page[-1]
+        response.headers[NEXT_CURSOR_HEADER] = encode_cursor(last.date, last.id)
+    return [JobOut.model_validate(j) for j in page]

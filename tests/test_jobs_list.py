@@ -191,3 +191,145 @@ def test_bad_query_params_are_422(runner_client, make_user, auth_header):
     for params in ({"active": "maybe"}, {"company_id": "nope"}, {"tier": "high"}):
         resp = runner_client.get("/jobs", headers=headers, params=params)
         assert resp.status_code == 422, params
+
+
+# BE-046: paging.
+
+
+def _page(
+    client: TestClient, headers: dict[str, str], **params: str | int
+) -> tuple[list[str], str | None]:
+    resp = client.get("/jobs", headers=headers, params=params)
+    assert resp.status_code == 200, resp.text
+    return [j["id"] for j in resp.json()], resp.headers.get("X-Next-Cursor")
+
+
+def _all_pages(
+    client: TestClient, headers: dict[str, str], **params: str | int
+) -> list[list[str]]:
+    pages = []
+    cursor: str | None = None
+    while True:
+        extra = {"cursor": cursor} if cursor else {}
+        ids, cursor = _page(client, headers, **params, **extra)
+        pages.append(ids)
+        if cursor is None:
+            return pages
+
+
+def test_default_limit_is_bounded(
+    runner_client, make_user, make_company, make_job, auth_header
+):
+    from job_lighthouse_backend.job_runner.jobs import DEFAULT_LIMIT
+
+    user = make_user()
+    company = make_company(user["id"])
+    for i in range(DEFAULT_LIMIT + 1):
+        make_job(user["id"], company, date=T0 + timedelta(minutes=i))
+
+    ids, cursor = _page(runner_client, auth_header(user["id"]))
+    assert len(ids) == DEFAULT_LIMIT
+    assert cursor is not None
+
+
+def test_pages_cover_every_job_once_in_order(
+    runner_client, make_user, make_company, make_job, auth_header
+):
+    user = make_user()
+    company = make_company(user["id"])
+    # Two pairs share a date, so the id breaks the tie across a page edge.
+    dates = [T0, T0, T0 + timedelta(days=1), T0 + timedelta(days=1), T0 - timedelta(1)]
+    for d in dates:
+        make_job(user["id"], company, date=d)
+    headers = auth_header(user["id"])
+    everything = _ids(runner_client, headers, limit=200)
+
+    pages = _all_pages(runner_client, headers, limit=2)
+    assert [len(p) for p in pages] == [2, 2, 1]
+    assert [i for p in pages for i in p] == everything
+
+
+def test_exact_multiple_has_no_next_cursor(
+    runner_client, make_user, make_company, make_job, auth_header
+):
+    user = make_user()
+    company = make_company(user["id"])
+    make_job(user["id"], company)
+    make_job(user["id"], company)
+
+    ids, cursor = _page(runner_client, auth_header(user["id"]), limit=2)
+    assert len(ids) == 2
+    assert cursor is None
+
+
+def test_new_job_does_not_shift_pages(
+    runner_client, make_user, make_company, make_job, auth_header
+):
+    user = make_user()
+    company = make_company(user["id"])
+    jobs = [
+        make_job(user["id"], company, date=T0 + timedelta(days=i)) for i in range(4)
+    ]
+    headers = auth_header(user["id"])
+
+    first, cursor = _page(runner_client, headers, limit=2)
+    assert cursor is not None
+    # A run adds a newer job between page loads.
+    make_job(user["id"], company, date=T0 + timedelta(days=10))
+    second, _ = _page(runner_client, headers, limit=2, cursor=cursor)
+    assert first + second == [str(j) for j in reversed(jobs)]
+
+
+def test_paging_keeps_filters(
+    runner_client, make_user, make_company, make_job, auth_header
+):
+    user = make_user()
+    tier1 = make_company(user["id"], tier=1)
+    tier2 = make_company(user["id"], tier=2)
+    wanted = []
+    for i in range(3):
+        wanted.append(make_job(user["id"], tier1, date=T0 + timedelta(days=i)))
+        make_job(user["id"], tier1, active=False, date=T0 + timedelta(days=i))
+        make_job(user["id"], tier2, date=T0 + timedelta(days=i))
+    headers = auth_header(user["id"])
+
+    pages = _all_pages(
+        runner_client, headers, limit=2, active="true", tier=1, company_id=str(tier1)
+    )
+    assert [i for p in pages for i in p] == [str(j) for j in reversed(wanted)]
+
+
+def test_cursor_is_scoped_to_the_caller(
+    runner_client, make_user, make_company, make_job, auth_header
+):
+    me, other = make_user(), make_user()
+    make_job(other["id"], make_company(other["id"]), date=T0)
+    make_job(other["id"], make_company(other["id"]), date=T0)
+    _, cursor = _page(runner_client, auth_header(other["id"]), limit=1)
+    assert cursor is not None
+    mine = make_job(me["id"], make_company(me["id"]), date=T0 - timedelta(days=1))
+
+    ids, _ = _page(runner_client, auth_header(me["id"]), cursor=cursor)
+    assert ids == [str(mine)]
+
+
+def test_bad_limit_or_cursor_is_422(runner_client, make_user, auth_header):
+    import base64
+
+    headers = auth_header(make_user()["id"])
+
+    def b64(text: str) -> str:
+        return base64.urlsafe_b64encode(text.encode()).decode()
+
+    for params in (
+        {"limit": 0},
+        {"limit": 201},
+        {"cursor": ""},
+        {"cursor": "not base64!"},
+        {"cursor": b64("no separator")},
+        {"cursor": b64(f"2026-09-01T00:00:00|{uuid.uuid4()}")},  # no timezone
+        {"cursor": b64("2026-09-01T00:00:00+00:00|not-a-uuid")},
+        {"cursor": base64.urlsafe_b64encode(b"\xff\xfe").decode()},
+    ):
+        resp = runner_client.get("/jobs", headers=headers, params=params)
+        assert resp.status_code == 422, params

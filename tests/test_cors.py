@@ -70,6 +70,15 @@ def test_simple_request_carries_allow_origin() -> None:
     assert response.headers["access-control-allow-origin"] == ALLOWED
 
 
+@pytest.mark.usefixtures("allowed_origins")
+def test_next_cursor_header_is_exposed() -> None:
+    """GET /jobs paging: the browser only lets the frontend read it if exposed."""
+    client = TestClient(create_app("test"))
+    response = client.get("/health", headers={"Origin": ALLOWED})
+    exposed = response.headers["access-control-expose-headers"].lower()
+    assert "x-next-cursor" in exposed
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
