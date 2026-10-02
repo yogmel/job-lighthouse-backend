@@ -1,26 +1,20 @@
 """Job Runner Service: /config, /jobs, /runs and the cron tick loop."""
 
-import logging
-import uuid
+from functools import partial
 
 from fastapi import FastAPI
 
 from job_lighthouse_backend.common.app import create_app
 
 from . import config, jobs, runs_api
+from .runs_api import run_scheduled
 from .scheduler import tick_loop
-
-logger = logging.getLogger(__name__)
-
-
-async def _run_due(user_id: uuid.UUID) -> None:
-    # BE-032 starts the run here, under the same lock as POST /runs.
-    logger.info("Scheduled run due for user %s", user_id)
 
 
 async def _scheduler(app: FastAPI) -> None:
     if app.state.settings.scheduler_enabled:
-        await tick_loop(app.state.engine, _run_due)
+        # Same pipeline and lock as POST /runs.
+        await tick_loop(app.state.engine, partial(run_scheduled, app.state))
 
 
 app = create_app("Job Runner Service", background=[_scheduler])
