@@ -46,6 +46,8 @@ def create_app(title: str) -> FastAPI:
         allow_origins=cors_allowed_origins_from_env(),
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
+        # GET /jobs paging; the browser hides other custom headers cross-origin.
+        expose_headers=["X-Next-Cursor"],
         # The frontend sends a Bearer token, not cookies.
         allow_credentials=False,
     )
