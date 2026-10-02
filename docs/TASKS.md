@@ -685,7 +685,7 @@ Cron editor (including raw cron override per the mockup).
 
 ## v0.8 — Agent-assisted onboarding
 
-### BE-033 · Deterministic ATS signature matcher
+### ~~BE-033 · Deterministic ATS signature matcher~~
 
 **Target:** backend **Version:** v0.8
 
