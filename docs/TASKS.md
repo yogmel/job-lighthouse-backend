@@ -537,6 +537,10 @@ company's `RunCompanyResult` is `failed` and no jobs are closed. Install
 Chromium (`playwright install --with-deps chromium`) where the non-root
 `app` user can read it.
 
+Since v0.8 it also breaks detection: `POST /companies/detect` can't use its
+browser fallback, so JS-rendered careers pages come back `needs_custom` and
+pages that block a plain GET come back 422.
+
 **Acceptance criteria:**
 
 - A `dynamic` scraper source fetches successfully in the deployed container
@@ -751,6 +755,84 @@ Confirm screen showing the scored sample; on confirm, success banner.
 **Acceptance criteria:**
 
 - Confirm calls the persist step and the company appears in FE-004's list
+
+### v0.8 follow-ups
+
+Found while building BE-033 – BE-036 (#106, #107). The dynamic fallback
+also needs PROJ-009 (Chromium in the image).
+
+### BE-048 · POST /companies/detect can outlive the Nginx proxy timeout
+
+**Target:** backend **Version:** v0.8
+
+Detect runs inside the request. Worst case: a static GET, an LLM call on
+~60k chars, a browser render, a second LLM call, then scoring 5 jobs. Each
+OpenAI call can take up to 60s, and `nginx/` sets no `proxy_read_timeout`
+(60s default). The client then gets a 504 instead of `DetectOut`.
+
+**Acceptance criteria:**
+
+- A slow detect still gives the client a usable response (e.g. a total time
+  budget inside the request, or 202 + poll like BE-045)
+- The add-company flow (FE-012) still shows the resolving state
+
+### BE-049 · Rate-limit POST /companies/detect
+
+**Target:** backend **Version:** v0.8
+
+Signup is open, and one detect request can mean a headless render, 2
+selector-discovery calls and 5 scoring calls. Nothing bounds how often a
+user can call it.
+
+**Acceptance criteria:**
+
+- Per-user limit on detect calls (e.g. N per hour); over it returns 429
+- The limit is set from an env var with a sane default
+- No Redis or other new service (see CLAUDE.md out-of-scope list)
+
+### BE-050 · Detect boards embedded on a company's own careers page
+
+**Target:** backend **Version:** v0.8
+
+`match_board` only checks the pasted URL. A page like `acme.com/careers`
+that embeds Greenhouse, Lever or Ashby (script tag or iframe) isn't matched.
+`clean_html` also strips that script/iframe, so the LLM can't see it either.
+This is probably the most common thing users paste.
+
+**Acceptance criteria:**
+
+- A careers page embedding a known board's widget resolves to a `board`
+  source, with no LLM call
+- Embed detection reads the fetched HTML (script `src`, iframe `src`,
+  links); only known board hosts count
+
+### BE-051 · Wait for client-rendered job lists in selector discovery
+
+**Target:** backend **Version:** v0.8
+
+`render_page` without `wait_for` returns the HTML at the `load` event.
+Single-page apps that fetch jobs after load look empty, so discovery comes
+back `needs_custom`.
+
+**Acceptance criteria:**
+
+- Discovery's render waits for the page to settle (e.g. network idle,
+  bounded by the existing render timeout)
+- Scheduled `dynamic` scrapes keep waiting on `selectors.job` as today
+
+### BE-052 · Support EU-hosted Greenhouse and Lever boards
+
+**Target:** backend **Version:** v0.8
+
+`*.eu.greenhouse.io` and `jobs.eu.lever.co` use other API hosts than the
+board fetchers call, so BE-033 doesn't match them. They fall through to
+selector discovery.
+
+**Acceptance criteria:**
+
+- EU board URLs resolve to a `board` source and fetch from the right API host
+- The stored `Source` records the region (schema change agreed in
+  SYSTEM_DESIGN.md first)
 
 ---
 
