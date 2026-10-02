@@ -660,7 +660,7 @@ the last `Runs.started_at` to decide if a run is due.
 
 - Changing `Config.cron` changes behavior on the next tick, no restart needed
 
-### BE-032 · Wire advisory lock into scheduled runs
+### ~~BE-032 · Wire advisory lock into scheduled runs~~
 
 **Target:** backend **Version:** v0.7
 
