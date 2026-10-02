@@ -7,7 +7,7 @@ is a **400**; other body errors stay FastAPI's usual 422.
 import uuid
 from collections.abc import Callable, Coroutine
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.encoders import jsonable_encoder
@@ -20,6 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_lighthouse_backend.common.auth import CurrentUserId
 from job_lighthouse_backend.common.db import get_session
+from job_lighthouse_backend.job_runner.company_run import (
+    CompanyOutcome,
+    Fetcher,
+    fetch_company,
+    fetch_openings,
+)
 
 from .models import Company
 from .sources import ManualSource, NonEmptyStr, Source
@@ -93,6 +99,24 @@ class CompanyUpdate(BaseModel):
         if nulls:
             raise ValueError(f"Cannot be null: {', '.join(nulls)}")
         return self
+
+
+class SourceTestOut(BaseModel):
+    """Result of fetching a company's source once.
+
+    - ``ok``: reachable; ``jobs_found`` may be 0.
+    - ``failed``: the fetch failed; ``error`` says why.
+    - ``skipped``: the source can't be fetched yet (``custom``).
+    """
+
+    status: Literal["ok", "failed", "skipped"]
+    jobs_found: int
+    error: str | None
+
+
+def get_fetcher() -> Fetcher:
+    """Dependency so tests can swap the network out."""
+    return fetch_openings
 
 
 def _not_found() -> HTTPException:
@@ -184,3 +208,35 @@ async def update_company(
 
     await session.commit()
     return CompanyOut.model_validate(company)
+
+
+@router.post(
+    "/{company_id}/test",
+    response_model=SourceTestOut,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Company not found"}},
+)
+async def test_company(
+    company_id: uuid.UUID,
+    user_id: CurrentUserId,
+    session: Session,
+    fetch: Annotated[Fetcher, Depends(get_fetcher)],
+) -> SourceTestOut:
+    """Fetch the company's stored source once and report what came back.
+
+    Read-only: no jobs and no ``RunCompanyResult`` are written. Paused
+    companies can be tested too.
+    """
+    company = await session.scalar(
+        select(Company).where(Company.id == company_id, Company.user_id == user_id)
+    )
+    if company is None:
+        raise _not_found()
+    # Don't hold a DB connection through a fetch that can take seconds.
+    await session.close()
+
+    openings = await fetch_company(company, fetch)
+    if isinstance(openings, CompanyOutcome):
+        return SourceTestOut(status=openings.status, jobs_found=0, error=openings.error)
+    return SourceTestOut(
+        status="ok", jobs_found=len({o.url for o in openings}), error=None
+    )

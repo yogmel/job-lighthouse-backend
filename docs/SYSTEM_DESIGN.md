@@ -359,7 +359,7 @@ location?: string;
 | `POST`   | `/companies`                  | add new company                                          |
 | `POST`   | `/companies/detect`           | given a careers URL, run ATS detection (+ fallback agent), return a draft Source and a scored sample |
 | `PUT`    | `/companies/{id}`             | modify company                                           |
-| `POST`   | `/companies/{id}/test`        | re-test a company's source; report reachability/count    |
+| `POST`   | `/companies/{id}/test`        | re-test a company's source; report reachability/count. `200 { status: "ok" \| "failed" \| "skipped", jobs_found, error }`; `ok` with `jobs_found: 0` is reachable-but-empty. Read-only: writes no jobs or run results |
 | `GET`    | `/jobs`                       | fetch jobs, newest first; `limit` (default 50, max 200) + keyset `cursor`, next page in the `X-Next-Cursor` header |
 | `GET`    | `/config`                     | fetch configuration                                      |
 | `PUT`    | `/config`                     | modify configuration                                     |

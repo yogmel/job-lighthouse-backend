@@ -82,9 +82,14 @@ async def run_company(
     return outcome
 
 
-async def _outcome(
-    session: AsyncSession, company: Company, fetch: Fetcher
-) -> CompanyOutcome:
+async def fetch_company(
+    company: Company, fetch: Fetcher = fetch_openings
+) -> list[Opening] | CompanyOutcome:
+    """Fetch ``company``'s openings without touching the DB.
+
+    Returns the openings, or the ``failed`` / ``skipped`` outcome when there
+    are none to use. Never raises for a fetch failure.
+    """
     try:
         source = _source_adapter.validate_python(company.source)
     except ValidationError:
@@ -93,13 +98,21 @@ async def _outcome(
         return CompanyOutcome("skipped", error="custom handlers are not supported yet")
 
     try:
-        openings = await asyncio.to_thread(fetch, source)
+        return await asyncio.to_thread(fetch, source)
     except FetchError as exc:
         return CompanyOutcome("failed", error=str(exc) or "fetch failed")
     except Exception as exc:
         # A bug in a fetcher must not take the other companies down.
         logger.exception("Unexpected fetch error for company %s", company.id)
         return CompanyOutcome("failed", error=f"unexpected error: {type(exc).__name__}")
+
+
+async def _outcome(
+    session: AsyncSession, company: Company, fetch: Fetcher
+) -> CompanyOutcome:
+    openings = await fetch_company(company, fetch)
+    if isinstance(openings, CompanyOutcome):
+        return openings
 
     try:
         async with session.begin_nested():
