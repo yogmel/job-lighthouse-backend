@@ -1,4 +1,5 @@
-"""/runs: trigger a run by hand, and the scheduled run the tick loop starts.
+"""/runs: trigger a run by hand, the scheduled run the tick loop starts, and
+the caller's run history.
 
 Both use the same per-user lock and the same pipeline, so they can't overlap.
 A manual run goes on in a background task, not inside the request: a run can
@@ -12,13 +13,15 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import State
 
 from job_lighthouse_backend.common.auth import CurrentUserId
+from job_lighthouse_backend.common.db import get_session
 from job_lighthouse_backend.common.email import Mailer, resend_mailer
 
 from .company_run import Fetcher, fetch_openings
@@ -30,6 +33,11 @@ from .scoring import Scorer, create_openai_scorer
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+
+Session = Annotated[AsyncSession, Depends(get_session)]
+
+DEFAULT_LIMIT = 50
+MAX_LIMIT = 200
 
 
 def get_fetcher() -> Fetcher:
@@ -151,6 +159,25 @@ async def create_run(
         )
     # execute_run only returns a row after opening it.
     raise AssertionError("run closed without opening")  # pragma: no cover
+
+
+@router.get("", response_model=list[RunOut])
+async def list_runs(
+    user_id: CurrentUserId,
+    session: Session,
+    limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
+) -> list[RunOut]:
+    """The caller's runs, most recent ``started_at`` first, at most ``limit``.
+
+    Includes a run still ``running``.
+    """
+    rows = await session.scalars(
+        select(Run)
+        .where(Run.user_id == user_id)
+        .order_by(Run.started_at.desc(), Run.id.desc())
+        .limit(limit)
+    )
+    return [RunOut.model_validate(r) for r in rows]
 
 
 def _finished(task: asyncio.Task[Run | None]) -> None:
