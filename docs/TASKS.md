@@ -558,7 +558,7 @@ allows it).
 - A run longer than the proxy timeout still gives the client a usable response
 - Lock contention still no-ops (409); a failing run still closes as `failed`
 
-### BE-046 · Paginate GET /jobs
+### ~~BE-046 · Paginate GET /jobs~~
 
 **Target:** backend **Version:** v0.4
 
