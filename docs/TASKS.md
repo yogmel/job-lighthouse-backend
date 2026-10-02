@@ -698,7 +698,7 @@ Lever, Ashby, SmartRecruiters.
   LLM call
 - Unrecognized URL returns no match, doesn't throw
 
-### BE-034 · LLM selector-discovery fallback
+### ~~BE-034 · LLM selector-discovery fallback~~
 
 **Target:** backend **Version:** v0.8
 
