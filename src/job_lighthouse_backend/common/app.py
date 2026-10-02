@@ -2,8 +2,13 @@
 
 Startup reads settings and checks the database. Any failure propagates, so
 uvicorn logs it and exits non-zero instead of serving a broken app.
+
+Work that outlives a request goes in ``app.state.background_tasks``. Shutdown
+cancels those tasks and waits for them before closing the engine, so each one
+gets to clean up (e.g. close its ``Runs`` row) while the DB is still there.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -32,9 +37,14 @@ def create_app(title: str) -> FastAPI:
         app.state.settings = settings
         app.state.engine = engine
         app.state.sessionmaker = create_sessionmaker(engine)
+        tasks: set[asyncio.Task[object]] = set()
+        app.state.background_tasks = tasks
         try:
             yield
         finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
             await engine.dispose()
 
     app = FastAPI(title=title, lifespan=lifespan)

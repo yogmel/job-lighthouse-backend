@@ -363,7 +363,7 @@ location?: string;
 | `GET`    | `/jobs`                       | fetch all jobs                                           |
 | `GET`    | `/config`                     | fetch configuration                                      |
 | `PUT`    | `/config`                     | modify configuration                                     |
-| `POST`   | `/runs`                       | trigger a run now (manual)                               |
+| `POST`   | `/runs`                       | trigger a run now (manual); `202` with the `running` row, the run goes on in the background (`409` if one is in flight) |
 | `GET`    | `/runs`                       | run history for the dashboard                            |
 | `GET`    | `/runs/{id}/companies`        | per-company breakdown for one run (`RunCompanyResult`)   |
 

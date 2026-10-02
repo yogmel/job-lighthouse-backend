@@ -31,6 +31,9 @@ Trigger = Literal["cron", "manual"]
 # new jobs, stored as ``Runs.jobs_found``.
 Pipeline = Callable[[AsyncSession, Run], Awaitable[int]]
 
+# Called with the ``running`` row once it is committed, before the pipeline.
+OnOpen = Callable[[Run], None]
+
 # Keeps ``Runs.error`` readable; the full traceback goes to the log.
 MAX_ERROR_LENGTH = 1000
 
@@ -50,12 +53,17 @@ def _error_text(exc: BaseException) -> str:
 
 
 async def execute_run(
-    engine: AsyncEngine, user_id: uuid.UUID, trigger: Trigger, pipeline: Pipeline
+    engine: AsyncEngine,
+    user_id: uuid.UUID,
+    trigger: Trigger,
+    pipeline: Pipeline,
+    on_open: OnOpen | None = None,
 ) -> Run | None:
     """Run ``pipeline`` for ``user_id`` under the lock.
 
     Returns the closed ``Runs`` row (``success`` or ``failed``), or ``None``
-    if another run holds the lock. In that case no row is written.
+    if another run holds the lock. In that case no row is written and
+    ``on_open`` isn't called.
     A pipeline exception closes the row as ``failed`` and is not re-raised;
     a cancellation also closes it, then propagates.
     """
@@ -69,7 +77,7 @@ async def execute_run(
         if not acquired:
             return None
         try:
-            return await _run(sessionmaker, user_id, trigger, pipeline)
+            return await _run(sessionmaker, user_id, trigger, pipeline, on_open)
         finally:
             try:
                 await lock_conn.execute(
@@ -86,6 +94,7 @@ async def _run(
     user_id: uuid.UUID,
     trigger: Trigger,
     pipeline: Pipeline,
+    on_open: OnOpen | None,
 ) -> Run:
     async with sessionmaker() as session:
         run = Run(user_id=user_id, trigger=trigger, status="running")
@@ -94,6 +103,8 @@ async def _run(
         await session.refresh(run)
 
     try:
+        if on_open is not None:
+            on_open(run)
         async with sessionmaker() as work:
             jobs_found = await pipeline(work, run)
     except BaseException as exc:

@@ -1,5 +1,9 @@
-"""BE-025: POST /runs wires the whole pipeline together (BE-028: scoring)."""
+"""BE-025: POST /runs wires the whole pipeline together (BE-028: scoring).
 
+BE-045: the run goes on in the background; the response is the open row.
+"""
+
+import asyncio
 import uuid
 from collections.abc import Iterator
 
@@ -12,7 +16,7 @@ from job_lighthouse_backend.job_runner.openings import FetchError, Opening
 from job_lighthouse_backend.job_runner.runs import lock_name
 from job_lighthouse_backend.job_runner.runs_api import get_fetcher
 
-from .conftest import BOARD_SOURCE, TEST_JWT_SECRET, needs_db
+from .conftest import BOARD_SOURCE, TEST_JWT_SECRET, needs_db, wait_for_run
 from .test_sync_close import SCRAPER_SOURCE
 
 pytestmark = needs_db
@@ -105,15 +109,16 @@ def test_full_run(client, db, make_user, make_company, auth_header, fake_fetch):
     }
 
     resp = client.post("/runs", headers=auth_header(user["id"]))
-    assert resp.status_code == 201
+    assert resp.status_code == 202
     body = resp.json()
-    assert body["status"] == "success"
+    assert body["status"] == "running"
     assert body["trigger"] == "manual"
-    assert body["jobs_found"] == 2
-    assert body["finished_at"] is not None
+    assert body["jobs_found"] == 0
+    assert body["finished_at"] is None
     assert body["error"] is None
 
     run_id = uuid.UUID(body["id"])
+    assert wait_for_run(db, run_id) == ("success", 2, None)
     # Exactly one result per active company; the paused one isn't in the run.
     assert _results(db, run_id) == {
         ok: ("ok", 2),
@@ -139,8 +144,9 @@ def test_second_run_finds_no_new_jobs(
     make_company(user["id"], source=_board("acme"))
     fake_fetch.by_key = {"acme": [Opening("A", _url())]}
     first = client.post("/runs", headers=auth_header(user["id"])).json()
+    assert wait_for_run(db, first["id"])[1] == 1
     second = client.post("/runs", headers=auth_header(user["id"])).json()
-    assert (first["jobs_found"], second["jobs_found"]) == (1, 0)
+    assert wait_for_run(db, second["id"])[1] == 0
     assert first["id"] != second["id"]
 
 
@@ -150,7 +156,8 @@ def test_only_own_companies_are_run(
     user, other = make_user(), make_user()
     make_company(other["id"], source=_board("theirs"))
     resp = client.post("/runs", headers=auth_header(user["id"]))
-    assert resp.status_code == 201
+    assert resp.status_code == 202
+    assert wait_for_run(db, resp.json()["id"])[0] == "success"
     assert fake_fetch.calls == []
     assert _results(db, uuid.UUID(resp.json()["id"])) == {}
 
@@ -171,7 +178,7 @@ def test_contention_noops_with_409(client, db, make_user, make_company, auth_hea
     assert count == (0,)
 
 
-def test_pipeline_error_returns_failed_run(
+def test_pipeline_error_closes_run_as_failed(
     client, db, make_user, make_company, auth_header, monkeypatch
 ):
     user = make_user()
@@ -182,9 +189,64 @@ def test_pipeline_error_returns_failed_run(
 
     monkeypatch.setattr(pipeline, "run_company", broken)
     resp = client.post("/runs", headers=auth_header(user["id"]))
-    assert resp.status_code == 201
-    assert resp.json()["status"] == "failed"
-    assert resp.json()["error"] == "RuntimeError: boom"
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "running"
+    assert wait_for_run(db, resp.json()["id"]) == ("failed", 0, "RuntimeError: boom")
+
+
+def test_responds_before_the_run_finishes(
+    client, db, make_user, make_company, auth_header, monkeypatch
+):
+    """A run longer than the proxy timeout: the client still gets the row."""
+    user = make_user()
+    make_company(user["id"])
+    release = asyncio.Event()
+    loop: list[asyncio.AbstractEventLoop] = []
+
+    async def slow(*args, **kwargs):
+        loop.append(asyncio.get_running_loop())
+        await release.wait()
+        raise RuntimeError("done waiting")
+
+    monkeypatch.setattr(pipeline, "run_company", slow)
+    resp = client.post("/runs", headers=auth_header(user["id"]))
+    assert resp.status_code == 202
+    run_id = resp.json()["id"]
+    row = db.execute("SELECT status FROM runs WHERE id = %s", (run_id,)).fetchone()
+    assert row == ("running",)
+
+    # The lock is still held: a second request no-ops.
+    again = client.post("/runs", headers=auth_header(user["id"]))
+    assert again.status_code == 409
+
+    loop[0].call_soon_threadsafe(release.set)
+    assert wait_for_run(db, run_id)[0] == "failed"
+    # Lock released: the next run starts.
+    assert client.post("/runs", headers=auth_header(user["id"])).status_code == 202
+
+
+def test_shutdown_closes_a_running_run(
+    db, make_user, make_company, auth_header, fake_fetch, monkeypatch
+):
+    """Shutdown cancels the run, which still closes as failed."""
+    from job_lighthouse_backend.job_runner.main import app
+
+    user = make_user()
+    make_company(user["id"])
+
+    async def hangs(*args, **kwargs):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(pipeline, "run_company", hangs)
+    app.dependency_overrides[get_fetcher] = lambda: fake_fetch
+    try:
+        with TestClient(app) as c:
+            resp = c.post("/runs", headers=auth_header(user["id"]))
+            assert resp.status_code == 202
+    finally:
+        app.dependency_overrides.clear()
+    status_, _, error = wait_for_run(db, resp.json()["id"], timeout=1)
+    assert (status_, error) == ("failed", "CancelledError")
 
 
 def test_deleted_account_is_404(client, auth_header):
@@ -221,7 +283,9 @@ def test_new_jobs_scored_through_api(
     app.dependency_overrides[get_scorer] = lambda: scorer
     try:
         with TestClient(app) as c:
-            assert c.post("/runs", headers=auth_header(user["id"])).status_code == 201
+            resp = c.post("/runs", headers=auth_header(user["id"]))
+            assert resp.status_code == 202
+            assert wait_for_run(db, resp.json()["id"])[0] == "success"
     finally:
         app.dependency_overrides.clear()
     row = db.execute(
