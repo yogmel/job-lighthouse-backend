@@ -367,6 +367,37 @@ location?: string;
 | `GET`    | `/runs`                       | run history for the dashboard                            |
 | `GET`    | `/runs/{id}/companies`        | per-company breakdown for one run (`RunCompanyResult`)   |
 
+### Add-company detection shapes
+
+The frontend's add-company flow (FE-012, FE-013) is built against this.
+
+`POST /companies/detect` takes `{ url }` (a pasted careers URL; the scheme is
+optional) and stores nothing:
+
+```ts
+type DetectOut = {
+  status: "detected" | "needs_custom";
+  method: "board" | "selectors" | null; // how the source was found
+  source: Source | null;                // `board` or `scraper`; null when needs_custom
+  jobs_found: number;                   // distinct openings the live fetch returned
+  sample: {                             // first 5, scored like a run's new jobs
+    title: string;
+    url: string;
+    location: string;
+    match_score: number | null;         // null: no profile, no LLM key, or scoring failed
+    match_description: string | null;
+  }[];
+  reason: string | null;                // why it needs custom handling
+};
+```
+
+- `needs_custom` is a `200`: the page loaded but no board matched and no
+  selectors scraped it (or `OPENAI_API_KEY` is unset).
+- `422 { detail }`: the URL can't be loaded at all, or a matched board's
+  API fails (e.g. a wrong slug).
+- **Confirm** = `POST /companies` with the returned `source` unchanged. No
+  detection runs again.
+
 ### Auth & account request/response shapes
 
 The frontend is built against these (FE-001, FE-002, FE-003). They match the
