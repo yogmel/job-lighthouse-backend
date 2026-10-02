@@ -649,7 +649,7 @@ Notification preferences screen — no Notion-mirror toggle (retired).
 
 ## v0.7 — Scheduling
 
-### BE-031 · Internal tick loop
+### ~~BE-031 · Internal tick loop~~
 
 **Target:** backend **Version:** v0.7
 

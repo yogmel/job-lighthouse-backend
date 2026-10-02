@@ -477,6 +477,13 @@ Cron` box is conceptual: the scheduler and the `/config` endpoints live
 it against the last run's `started_at` (from `Runs`) to decide whether a run is
 due.
 
+- Due = the first cron fire time after the last run's `started_at` (any
+  trigger, any status) is at or before now. After downtime, a missed schedule
+  runs once, not once per missed fire.
+- A user with no runs yet waits for the first fire after `users.created_at`.
+- Cron is a standard 5-field expression in UTC. An invalid one is logged and
+  skipped.
+
 Ticking, rather than registering a cron job at boot, is what keeps `Config.cron`
 meaningful — `PUT /config` changes the schedule on the next tick, with no
 restart and no external YAML to keep in sync.

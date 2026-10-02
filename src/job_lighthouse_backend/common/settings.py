@@ -35,6 +35,8 @@ class Settings:
     resend_api_key: str | None = None
     # Sender, e.g. "Job Lighthouse <digest@example.com>". Required with the key.
     email_from: str | None = None
+    # Job Runner tick loop. Off in tests, so TestClient doesn't start runs.
+    scheduler_enabled: bool = True
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -55,6 +57,9 @@ class Settings:
         email_from = os.environ.get("EMAIL_FROM") or None
         if resend_api_key and not email_from:
             raise SettingsError("EMAIL_FROM is required when RESEND_API_KEY is set.")
+        scheduler = os.environ.get("SCHEDULER_ENABLED", "").strip().lower()
+        if scheduler not in ("", "true", "false"):
+            raise SettingsError("SCHEDULER_ENABLED must be true or false.")
         return cls(
             database_url=database_url,
             jwt_secret=jwt_secret,
@@ -64,4 +69,5 @@ class Settings:
             openai_model=os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL,
             resend_api_key=resend_api_key,
             email_from=email_from,
+            scheduler_enabled=scheduler != "false",
         )
