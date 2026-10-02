@@ -52,6 +52,8 @@ def _jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     # Never send real email from tests either.
     monkeypatch.delenv("RESEND_API_KEY", raising=False)
     monkeypatch.delenv("EMAIL_FROM", raising=False)
+    # No tick loop: it would start real runs for every user in the shared DB.
+    monkeypatch.setenv("SCHEDULER_ENABLED", "false")
 
 
 def _sync_dsn() -> str:

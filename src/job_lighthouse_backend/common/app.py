@@ -3,15 +3,17 @@
 Startup reads settings and checks the database. Any failure propagates, so
 uvicorn logs it and exits non-zero instead of serving a broken app.
 
-Work that outlives a request goes in ``app.state.background_tasks``. Shutdown
+Work that outlives a request goes in ``app.state.background_tasks``, and so
+does each ``background`` coroutine started at boot (e.g. the tick loop). Shutdown
 cancels those tasks and waits for them before closing the engine, so each one
 gets to clean up (e.g. close its ``Runs`` row) while the DB is still there.
 """
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +24,11 @@ from .settings import Settings, cors_allowed_origins_from_env
 logger = logging.getLogger(__name__)
 
 
-def create_app(title: str) -> FastAPI:
+# Started once the DB is up; gets the app, so it can read ``app.state``.
+Background = Callable[[FastAPI], Coroutine[Any, Any, None]]
+
+
+def create_app(title: str, background: Sequence[Background] = ()) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings = Settings.from_env()
@@ -39,6 +45,10 @@ def create_app(title: str) -> FastAPI:
         app.state.sessionmaker = create_sessionmaker(engine)
         tasks: set[asyncio.Task[object]] = set()
         app.state.background_tasks = tasks
+        for start in background:
+            started: asyncio.Task[object] = asyncio.create_task(start(app))
+            tasks.add(started)
+            started.add_done_callback(tasks.discard)
         try:
             yield
         finally:

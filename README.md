@@ -33,6 +33,9 @@ JWT_SECRET=change-me
 # RESEND_API_KEY=...
 # EMAIL_FROM=Job Lighthouse <digest@example.com>   # required with the key
 
+# Job Runner cron tick loop. Default true; false stops scheduled runs.
+# SCHEDULER_ENABLED=true
+
 # Frontend origins allowed by CORS, comma-separated. Unset: none.
 CORS_ALLOWED_ORIGINS=http://localhost:3000
 ```

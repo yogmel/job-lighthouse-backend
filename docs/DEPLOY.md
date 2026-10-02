@@ -137,6 +137,12 @@ Email needs these (from v0.6):
   won't start. A sender on a domain verified in Resend, e.g.
   `Job Lighthouse <digest@example.com>`.
 
+Scheduling needs nothing (from v0.7). The Job Runner ticks every minute and
+starts the runs due by each user's `Config.cron` (UTC).
+
+- `SCHEDULER_ENABLED`: optional, `true` by default. `false` stops scheduled
+  runs; manual `POST /runs` still works.
+
 Also set these, so the compose Nginx binds to localhost only and leaves
 80/443 to the host Nginx:
 
