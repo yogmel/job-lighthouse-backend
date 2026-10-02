@@ -10,7 +10,7 @@ from job_lighthouse_backend.job_runner.openings import Opening
 from job_lighthouse_backend.job_runner.pipeline import run_pipeline
 
 from .aio import in_session
-from .conftest import BOARD_SOURCE, TEST_JWT_SECRET, needs_db
+from .conftest import BOARD_SOURCE, TEST_JWT_SECRET, needs_db, wait_for_run
 
 
 class FakeMailer:
@@ -210,10 +210,10 @@ def test_post_runs_sends_digest(db, make_user, make_company, auth_header):
     try:
         with TestClient(app) as client:
             resp = client.post("/runs", headers=auth_header(user["id"]))
+            assert resp.status_code == 202
+            assert wait_for_run(db, resp.json()["id"])[0] == "success"
     finally:
         app.dependency_overrides.clear()
-    assert resp.status_code == 201
-    assert resp.json()["status"] == "success"
     assert [e.to for e in mailer.sent] == [user["email"]]
     assert _notified(db, user["id"]) == {"Job A": True}
 

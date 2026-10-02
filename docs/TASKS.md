@@ -542,7 +542,7 @@ Chromium (`playwright install --with-deps chromium`) where the non-root
 - A `dynamic` scraper source fetches successfully in the deployed container
 - The image still passes the Trivy HIGH/CRITICAL gate
 
-### BE-045 · POST /runs can outlive the Nginx proxy timeout
+### ~~BE-045 · POST /runs can outlive the Nginx proxy timeout~~
 
 **Target:** backend **Version:** v0.4
 

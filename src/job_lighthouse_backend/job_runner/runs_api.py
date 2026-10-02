@@ -1,9 +1,13 @@
 """/runs: trigger a run by hand.
 
-The run happens inline, inside the request, under the same per-user lock and
-pipeline a scheduled run will use.
+The run uses the same per-user lock and pipeline a scheduled run will use.
+It runs in a background task, not inside the request: a run can take longer
+than Nginx's ``proxy_read_timeout``. The request waits only until the lock is
+taken and the ``Runs`` row is open.
 """
 
+import asyncio
+import logging
 import uuid
 from datetime import datetime
 from typing import Annotated, Literal
@@ -21,6 +25,8 @@ from .models import Run
 from .pipeline import run_pipeline
 from .runs import execute_run
 from .scoring import Scorer, create_openai_scorer
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -74,7 +80,7 @@ class RunOut(BaseModel):
 @router.post(
     "",
     response_model=RunOut,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_202_ACCEPTED,
     responses={
         status.HTTP_404_NOT_FOUND: {"description": "Account not found"},
         status.HTTP_409_CONFLICT: {"description": "A run is already in progress"},
@@ -87,21 +93,39 @@ async def create_run(
     scorer: Annotated[Scorer | None, Depends(get_scorer)],
     mailer: Annotated[Mailer | None, Depends(get_mailer)],
 ) -> RunOut:
-    """Run the pipeline now and return the finished ``Runs`` row.
+    """Start a run and return its ``Runs`` row with ``status: "running"``.
 
-    - ``jobs_found`` is the number of **new** jobs. They are scored against
-      the profile when a scorer is configured.
+    The pipeline goes on in the background and closes the row as
+    ``success`` or ``failed``:
+
+    - ``jobs_found`` becomes the number of **new** jobs. They are scored
+      against the profile when a scorer is configured.
     - When email is configured, the digest of all open, not-yet-notified
       jobs is sent at the end. A failed send doesn't fail the run.
-    - A pipeline error is still a 201, with ``status: "failed"``.
     - 409 if a run for this user holds the lock; nothing is written.
     """
 
     async def pipeline(session: AsyncSession, run: Run) -> int:
         return await run_pipeline(session, run, fetch, scorer, mailer)
 
+    opened: asyncio.Future[Run | None] = asyncio.get_running_loop().create_future()
+    # The task owns the lock connection and the row for the whole run, so
+    # both are released on every path, even if this request goes away.
+    task = asyncio.create_task(
+        execute_run(
+            request.app.state.engine, user_id, "manual", pipeline, opened.set_result
+        )
+    )
+    tasks: set[asyncio.Task[object]] = request.app.state.background_tasks
+    tasks.add(task)
+    task.add_done_callback(_finished)
+    task.add_done_callback(tasks.discard)
+
+    await asyncio.wait({opened, task}, return_when=asyncio.FIRST_COMPLETED)
+    if opened.done():
+        return RunOut.model_validate(opened.result())
     try:
-        run = await execute_run(request.app.state.engine, user_id, "manual", pipeline)
+        run = task.result()
     except IntegrityError:
         # Only the runs.user_id FK can fail: the token's user was deleted.
         raise HTTPException(
@@ -111,4 +135,17 @@ async def create_run(
         raise HTTPException(
             status.HTTP_409_CONFLICT, detail="A run is already in progress"
         )
-    return RunOut.model_validate(run)
+    # execute_run only returns a row after opening it.
+    raise AssertionError("run closed without opening")  # pragma: no cover
+
+
+def _finished(task: asyncio.Task[Run | None]) -> None:
+    """Log what ``execute_run`` let through, e.g. the DB down at close time.
+
+    Pipeline errors are already on the row; this is the rest.
+    """
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None and not isinstance(exc, IntegrityError):
+        logger.error("Background run crashed", exc_info=exc)

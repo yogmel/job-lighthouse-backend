@@ -6,6 +6,7 @@ database, so each test uses unique emails and removes the users it creates.
 """
 
 import os
+import time
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import datetime
@@ -24,6 +25,22 @@ TEST_JWT_SECRET = "test-only-jwt-secret-not-for-production-use"  # noqa: S105 --
 needs_db = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"), reason="needs Postgres"
 )
+
+
+def wait_for_run(
+    db: psycopg.Connection, run_id: str | uuid.UUID, timeout: float = 10.0
+) -> tuple[str, int, str | None]:
+    """Wait for a background run to close; returns (status, jobs_found, error)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        row = db.execute(
+            "SELECT status, jobs_found, error FROM runs WHERE id = %s", (run_id,)
+        ).fetchone()
+        assert row is not None
+        if row[0] != "running":
+            return row
+        assert time.monotonic() < deadline, f"run {run_id} still running"
+        time.sleep(0.02)
 
 
 @pytest.fixture(autouse=True)
