@@ -849,7 +849,7 @@ Run history for the dashboard.
 - Ordered most-recent first
 - Only returns the requesting user's runs
 
-### BE-038 · GET /runs/{id}/companies
+### ~~BE-038 · GET /runs/{id}/companies~~
 
 **Target:** backend **Version:** v0.9
 
