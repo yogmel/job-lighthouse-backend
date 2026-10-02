@@ -722,7 +722,7 @@ plus a scored sample of matched openings.
 - Response sample jobs are scored using the existing v0.5 scoring path
 - Confirming persists exactly the returned `Source`, no re-detection
 
-### BE-036 · POST /companies/{id}/test
+### ~~BE-036 · POST /companies/{id}/test~~
 
 **Target:** backend **Version:** v0.8
 
