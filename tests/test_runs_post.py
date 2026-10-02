@@ -4,6 +4,7 @@ BE-045: the run goes on in the background; the response is the open row.
 """
 
 import asyncio
+import threading
 import uuid
 from collections.abc import Iterator
 
@@ -201,10 +202,12 @@ def test_responds_before_the_run_finishes(
     user = make_user()
     make_company(user["id"])
     release = asyncio.Event()
+    started = threading.Event()
     loop: list[asyncio.AbstractEventLoop] = []
 
     async def slow(*args, **kwargs):
         loop.append(asyncio.get_running_loop())
+        started.set()
         await release.wait()
         raise RuntimeError("done waiting")
 
@@ -219,6 +222,7 @@ def test_responds_before_the_run_finishes(
     again = client.post("/runs", headers=auth_header(user["id"]))
     assert again.status_code == 409
 
+    assert started.wait(5)
     loop[0].call_soon_threadsafe(release.set)
     assert wait_for_run(db, run_id)[0] == "failed"
     # Lock released: the next run starts.
