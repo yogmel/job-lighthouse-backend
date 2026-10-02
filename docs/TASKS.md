@@ -838,7 +838,7 @@ selector discovery.
 
 ## v0.9 — Runs visibility
 
-### BE-037 · GET /runs
+### ~~BE-037 · GET /runs~~
 
 **Target:** backend **Version:** v0.9
 
