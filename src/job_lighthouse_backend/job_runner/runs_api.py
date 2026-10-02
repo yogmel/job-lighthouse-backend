@@ -1,5 +1,5 @@
 """/runs: trigger a run by hand, the scheduled run the tick loop starts, and
-the caller's run history.
+the caller's run history with a per-company breakdown for each run.
 
 Both use the same per-user lock and the same pipeline, so they can't overlap.
 A manual run goes on in a background task, not inside the request: a run can
@@ -25,7 +25,7 @@ from job_lighthouse_backend.common.db import get_session
 from job_lighthouse_backend.common.email import Mailer, resend_mailer
 
 from .company_run import Fetcher, fetch_openings
-from .models import Run
+from .models import Company, Run, RunCompanyResult
 from .pipeline import run_pipeline
 from .runs import Pipeline, execute_run
 from .scoring import Scorer, create_openai_scorer
@@ -178,6 +178,55 @@ async def list_runs(
         .limit(limit)
     )
     return [RunOut.model_validate(r) for r in rows]
+
+
+class RunCompanyResultOut(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    # Current name, not the name at run time.
+    company: str
+    status: Literal["ok", "failed", "skipped"]
+    jobs_found: int
+    error: str | None
+
+
+@router.get(
+    "/{run_id}/companies",
+    response_model=list[RunCompanyResultOut],
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Run not found"}},
+)
+async def list_run_companies(
+    run_id: uuid.UUID, user_id: CurrentUserId, session: Session
+) -> list[RunCompanyResultOut]:
+    """One row per company the run processed, ordered by company name.
+
+    404 if the run doesn't exist or belongs to another user. A run still
+    ``running`` returns the companies done so far.
+    """
+    owned = await session.scalar(
+        select(Run.id).where(Run.id == run_id, Run.user_id == user_id)
+    )
+    if owned is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Run not found")
+    rows = await session.execute(
+        select(RunCompanyResult, Company.name)
+        .join(Company, RunCompanyResult.company_id == Company.id)
+        .where(RunCompanyResult.run_id == run_id, Company.user_id == user_id)
+        .order_by(Company.name, RunCompanyResult.id)
+    )
+    return [
+        RunCompanyResultOut.model_validate(
+            {
+                "id": result.id,
+                "company_id": result.company_id,
+                "company": name,
+                "status": result.status,
+                "jobs_found": result.jobs_found,
+                "error": result.error,
+            }
+        )
+        for result, name in rows
+    ]
 
 
 def _finished(task: asyncio.Task[Run | None]) -> None:
