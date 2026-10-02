@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 TICK_SECONDS = 60
 
 # Called for each due user, one at a time, in the tick's own task.
-OnDue = Callable[[uuid.UUID], Awaitable[None]]
+OnDue = Callable[[uuid.UUID], Awaitable[object]]
 
 
 class InvalidCron(ValueError):
