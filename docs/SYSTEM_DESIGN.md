@@ -364,7 +364,7 @@ location?: string;
 | `GET`    | `/config`                     | fetch configuration                                      |
 | `PUT`    | `/config`                     | modify configuration                                     |
 | `POST`   | `/runs`                       | trigger a run now (manual); `202` with the `running` row, the run goes on in the background (`409` if one is in flight) |
-| `GET`    | `/runs`                       | run history for the dashboard                            |
+| `GET`    | `/runs`                       | run history for the dashboard, most recent first; `limit` (default 50, max 200) |
 | `GET`    | `/runs/{id}/companies`        | per-company breakdown for one run (`RunCompanyResult`)   |
 
 ### Add-company detection shapes
