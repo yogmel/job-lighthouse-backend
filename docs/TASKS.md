@@ -623,7 +623,7 @@ Thin wrapper around the chosen provider (Resend/Postmark/SES).
 - Send succeeds/fails distinguishably (caller can tell if it must not stamp
   `notified_at`)
 
-### BE-030 · Digest send + notified_at stamping
+### ~~BE-030 · Digest send + notified_at stamping~~
 
 **Target:** backend **Version:** v0.6
 

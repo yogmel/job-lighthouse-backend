@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_lighthouse_backend.common.auth import CurrentUserId
+from job_lighthouse_backend.common.email import Mailer, resend_mailer
 
 from .company_run import Fetcher, fetch_openings
 from .models import Run
@@ -44,6 +45,20 @@ def get_scorer(request: Request) -> Scorer | None:
     return state.scorer
 
 
+def get_mailer(request: Request) -> Mailer | None:
+    """The digest mailer, or ``None`` when ``RESEND_API_KEY`` isn't set.
+
+    Built once per app. A dependency so tests can swap the network out.
+    """
+    state = request.app.state
+    settings = state.settings
+    if not settings.resend_api_key or not settings.email_from:
+        return None
+    if getattr(state, "mailer", None) is None:
+        state.mailer = resend_mailer(settings.resend_api_key, settings.email_from)
+    return state.mailer
+
+
 class RunOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -70,17 +85,20 @@ async def create_run(
     user_id: CurrentUserId,
     fetch: Annotated[Fetcher, Depends(get_fetcher)],
     scorer: Annotated[Scorer | None, Depends(get_scorer)],
+    mailer: Annotated[Mailer | None, Depends(get_mailer)],
 ) -> RunOut:
     """Run the pipeline now and return the finished ``Runs`` row.
 
     - ``jobs_found`` is the number of **new** jobs. They are scored against
       the profile when a scorer is configured.
+    - When email is configured, the digest of all open, not-yet-notified
+      jobs is sent at the end. A failed send doesn't fail the run.
     - A pipeline error is still a 201, with ``status: "failed"``.
     - 409 if a run for this user holds the lock; nothing is written.
     """
 
     async def pipeline(session: AsyncSession, run: Run) -> int:
-        return await run_pipeline(session, run, fetch, scorer)
+        return await run_pipeline(session, run, fetch, scorer, mailer)
 
     try:
         run = await execute_run(request.app.state.engine, user_id, "manual", pipeline)
