@@ -710,7 +710,7 @@ When BE-033 finds no match, an agent reads the page and proposes
 - Returns a draft `Selectors` object when the agent finds a plausible list
 - Returns "needs custom handling" when it can't (feeds v0.10's paused state)
 
-### BE-035 · POST /companies/detect
+### ~~BE-035 · POST /companies/detect~~
 
 **Target:** backend **Version:** v0.8
 
