@@ -28,7 +28,8 @@ class Settings:
     jwt_ttl_seconds: int = DEFAULT_JWT_TTL_SECONDS
     # Only the Companies Service needs it (POST /auth/google).
     google_client_id: str | None = None
-    # Only the Job Runner needs it (match scoring). Unset: jobs stay unscored.
+    # Match scoring (both services) and selector discovery (Companies).
+    # Unset: jobs stay unscored, and only known boards are detected.
     openai_api_key: str | None = None
     openai_model: str = DEFAULT_OPENAI_MODEL
     # Transactional email (Resend). Unset: no email is sent.

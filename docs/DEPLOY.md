@@ -123,10 +123,12 @@ Auth needs these (from v0.2):
   headers in either Nginx: a duplicate header makes the browser reject
   the response.
 
-Match scoring needs these (from v0.5):
+Match scoring and add-company detection need these (from v0.5 / v0.8).
+Both services read them:
 
 - `OPENAI_API_KEY`: optional. Without it, runs still work but new jobs
-  are stored unscored, and stay unscored.
+  are stored unscored, and stay unscored. `POST /companies/detect` still
+  matches known boards, but any other URL comes back `needs_custom`.
 - `OPENAI_MODEL`: optional, `gpt-5-mini` by default. Must support
   structured outputs.
 

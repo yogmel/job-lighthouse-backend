@@ -72,6 +72,34 @@ async def load_profile(session: AsyncSession, user_id: uuid.UUID) -> Profile | N
     return Profile(config.profile, config.profile_version)
 
 
+async def score_postings(
+    postings: Sequence[Posting],
+    profile: str,
+    scorer: Scorer,
+    labels: Sequence[object] = (),
+) -> list[Match | None]:
+    """Score each posting, at most ``MAX_CONCURRENT`` at once.
+
+    A failed call gives ``None`` for that posting. ``labels`` (e.g. job ids)
+    only name postings in the failure log.
+    """
+    limit = asyncio.Semaphore(MAX_CONCURRENT)
+
+    async def score(i: int, posting: Posting) -> Match | None:
+        async with limit:
+            try:
+                return await scorer(profile, posting)
+            except Exception as exc:
+                label = labels[i] if i < len(labels) else f"#{i}"
+                # Type only: messages may echo the prompt (profile, posting).
+                logger.warning(
+                    "Scoring failed for job %s: %s", label, type(exc).__name__
+                )
+                return None
+
+    return list(await asyncio.gather(*(score(i, p) for i, p in enumerate(postings))))
+
+
 async def score_jobs(
     session: AsyncSession,
     job_ids: Sequence[uuid.UUID],
@@ -85,21 +113,12 @@ async def score_jobs(
     if not job_ids:
         return 0
     jobs = (await session.scalars(select(Job).where(Job.id.in_(job_ids)))).all()
-    limit = asyncio.Semaphore(MAX_CONCURRENT)
-
-    async def score(job: Job) -> Match | None:
-        posting = Posting(job.title, job.company, job.location, job.description)
-        async with limit:
-            try:
-                return await scorer(profile.text, posting)
-            except Exception as exc:
-                # Type only: messages may echo the prompt (profile, posting).
-                logger.warning(
-                    "Scoring failed for job %s: %s", job.id, type(exc).__name__
-                )
-                return None
-
-    matches = await asyncio.gather(*(score(job) for job in jobs))
+    matches = await score_postings(
+        [Posting(j.title, j.company, j.location, j.description) for j in jobs],
+        profile.text,
+        scorer,
+        labels=[j.id for j in jobs],
+    )
     scored = 0
     for job, match in zip(jobs, matches, strict=True):
         if match is None:

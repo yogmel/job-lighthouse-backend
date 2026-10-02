@@ -128,11 +128,23 @@ def _decode(body: bytes, headers: CaseInsensitiveDict[str]) -> str:
     return dammit.unicode_markup
 
 
+def fetch_static_page(url: str) -> tuple[str, str]:
+    """GET ``url`` (redirects checked hop by hop); return (final URL, HTML)."""
+    with requests.Session() as session:
+        return _get_static(session, url)
+
+
 def render_with_playwright(url: str, selectors: Selectors) -> tuple[str, str]:
     """Load ``url`` in headless Chromium and return (final URL, HTML).
 
     Every request the page makes goes through ``check_public_url``.
     """
+    return render_page(url, wait_for=selectors.job)
+
+
+def render_page(url: str, wait_for: str | None = None) -> tuple[str, str]:
+    """Like ``render_with_playwright``; waits for ``wait_for`` if given, else
+    only for the page's ``load`` event."""
     check_public_url(url)
     try:
         with sync_playwright() as pw:
@@ -145,8 +157,9 @@ def render_with_playwright(url: str, selectors: Selectors) -> tuple[str, str]:
                     status = "no response" if resp is None else f"HTTP {resp.status}"
                     raise FetchError(status)
                 # No cards showing up is parsed as zero matches, not an error.
-                with contextlib.suppress(PlaywrightError):
-                    page.wait_for_selector(selectors.job, timeout=SELECTOR_WAIT_MS)
+                if wait_for is not None:
+                    with contextlib.suppress(PlaywrightError):
+                        page.wait_for_selector(wait_for, timeout=SELECTOR_WAIT_MS)
                 return page.url, page.content()
             finally:
                 browser.close()
@@ -211,6 +224,5 @@ def fetch_scraper(
     elif http is not None:
         final_url, html = _get_static(http, url)
     else:
-        with requests.Session() as session:
-            final_url, html = _get_static(session, url)
+        final_url, html = fetch_static_page(url)
     return parse_openings(html, final_url, selectors)

@@ -423,3 +423,25 @@ def test_undecodable_page_is_failure(monkeypatch):
     monkeypatch.setattr(scraper, "UnicodeDammit", _Unreadable)
     with pytest.raises(FetchError, match="encoding"):
         fetch_scraper(_source(), FakeHttp(_response(body=UTF8_PAGE)))
+
+
+def test_render_page_without_wait_for(monkeypatch):
+    # Selector discovery renders before it knows any selector.
+    page = _FakePage(200, wait_error=AssertionError("must not wait"))
+    _fake_playwright(monkeypatch, page)
+    assert scraper.render_page(CAREERS) == (page.url, PAGE)
+
+
+def test_fetch_static_page_uses_own_session(monkeypatch):
+    http = FakeHttp(_response(body=PAGE.encode()))
+
+    class _Session:
+        def __enter__(self):
+            return http
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(scraper.requests, "Session", _Session)
+    assert scraper.fetch_static_page(CAREERS) == (CAREERS, PAGE)
+    assert http.calls == [CAREERS]
