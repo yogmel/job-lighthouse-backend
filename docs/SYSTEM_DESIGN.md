@@ -393,6 +393,13 @@ type DetectOut = {
 
 - `needs_custom` is a `200`: the page loaded but no board matched and no
   selectors scraped it (or `OPENAI_API_KEY` is unset).
+- `429 { detail }` + `Retry-After` (seconds): over the per-user limit,
+  `DETECT_LIMIT_PER_HOUR` calls per hour (default 20). Every call counts,
+  failed ones too. Counted in memory in the one Companies process: no Redis.
+- Detect has a **50s budget** inside the request, so it answers before
+  Nginx's 60s proxy timeout. Out of time while finding the source:
+  `needs_custom` with reason `"detection took too long"` (worth a retry).
+  Out of time while scoring: `detected` with the sample unscored.
 - `422 { detail }`: the URL can't be loaded at all, or a matched board's
   API fails (e.g. a wrong slug).
 - **Confirm** = `POST /companies` with the returned `source` unchanged. No
@@ -610,6 +617,10 @@ pattern (`PasswordResetToken.expires_at`).
 2. **Deterministic ATS detection first** — match the URL/host against known
    signatures for Greenhouse, Lever, Ashby, SmartRecruiters. If matched: fill
    `board` + `board_id`, verify with a live fetch, done — no LLM call.
+   Else fetch the page and look for a known board it embeds (script or
+   iframe `src`) or links to; the same signatures decide, and widgets win
+   over links. Two different boards = ambiguous, ignored. A matched board
+   that won't answer falls through to step 3: the page itself loaded fine.
 3. If no known board matches: dispatch the **LLM selector-discovery agent**
    against the page to propose `Selectors`
 4. If the agent can't produce a working scrape either: surface the company as

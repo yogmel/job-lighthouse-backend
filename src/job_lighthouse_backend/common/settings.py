@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 DEFAULT_JWT_TTL_SECONDS = 7 * 24 * 60 * 60
 DEFAULT_OPENAI_MODEL = "gpt-5-mini"
+DEFAULT_DETECT_LIMIT_PER_HOUR = 20
 
 
 class SettingsError(RuntimeError):
@@ -38,6 +39,8 @@ class Settings:
     email_from: str | None = None
     # Job Runner tick loop. Off in tests, so TestClient doesn't start runs.
     scheduler_enabled: bool = True
+    # POST /companies/detect calls allowed per user per hour (Companies).
+    detect_limit_per_hour: int = DEFAULT_DETECT_LIMIT_PER_HOUR
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -47,13 +50,10 @@ class Settings:
         jwt_secret = os.environ.get("JWT_SECRET")
         if not jwt_secret:
             raise SettingsError("JWT_SECRET is not set.")
-        ttl = os.environ.get("JWT_TTL_SECONDS")
-        try:
-            jwt_ttl_seconds = int(ttl) if ttl else DEFAULT_JWT_TTL_SECONDS
-        except ValueError:
-            raise SettingsError("JWT_TTL_SECONDS must be an integer.") from None
-        if jwt_ttl_seconds <= 0:
-            raise SettingsError("JWT_TTL_SECONDS must be positive.")
+        jwt_ttl_seconds = _positive_int("JWT_TTL_SECONDS", DEFAULT_JWT_TTL_SECONDS)
+        detect_limit = _positive_int(
+            "DETECT_LIMIT_PER_HOUR", DEFAULT_DETECT_LIMIT_PER_HOUR
+        )
         resend_api_key = os.environ.get("RESEND_API_KEY") or None
         email_from = os.environ.get("EMAIL_FROM") or None
         if resend_api_key and not email_from:
@@ -71,4 +71,16 @@ class Settings:
             resend_api_key=resend_api_key,
             email_from=email_from,
             scheduler_enabled=scheduler != "false",
+            detect_limit_per_hour=detect_limit,
         )
+
+
+def _positive_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    try:
+        value = int(raw) if raw else default
+    except ValueError:
+        raise SettingsError(f"{name} must be an integer.") from None
+    if value <= 0:
+        raise SettingsError(f"{name} must be positive.")
+    return value

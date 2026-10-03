@@ -28,6 +28,7 @@ JWT_SECRET=change-me
 # Match scoring. Without a key, new jobs are stored unscored.
 # OPENAI_API_KEY=...
 # OPENAI_MODEL=gpt-5-mini       # optional, this is the default
+# DETECT_LIMIT_PER_HOUR=20      # optional, POST /companies/detect calls per user
 
 # Transactional email (Resend). Without a key, no email is sent.
 # RESEND_API_KEY=...

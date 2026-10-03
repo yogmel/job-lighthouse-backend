@@ -131,6 +131,9 @@ Both services read them:
   matches known boards, but any other URL comes back `needs_custom`.
 - `OPENAI_MODEL`: optional, `gpt-5-mini` by default. Must support
   structured outputs.
+- `DETECT_LIMIT_PER_HOUR`: optional, 20 by default. `POST /companies/detect`
+  calls each user may make per hour; over it is a 429. Counted in memory,
+  so it assumes one Companies process, and resets on deploy.
 
 Email needs these (from v0.6):
 

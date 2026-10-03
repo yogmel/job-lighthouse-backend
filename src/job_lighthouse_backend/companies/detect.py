@@ -1,20 +1,33 @@
 """POST /companies/detect: turn a pasted careers URL into a draft ``Source``.
 
 1. Known board URL (BE-033): verify with a live fetch of the board. No LLM.
-2. Otherwise, LLM selector discovery (BE-034).
-3. Neither works: ``needs_custom`` (a 200, not an error).
+2. A known board embedded on or linked from the page (BE-050): same, but a
+   board that won't answer falls through to step 3, since the page itself
+   loaded fine.
+3. Otherwise, LLM selector discovery (BE-034).
+4. None works: ``needs_custom`` (a 200, not an error).
 
 The response carries a scored sample of the openings found, scored the same
 way a run scores new jobs. Nothing is stored: the user confirms by sending
 the returned ``source`` unchanged to ``POST /companies``.
 
+Each user gets ``DETECT_LIMIT_PER_HOUR`` calls per hour (BE-049); over it is
+a **429** with ``Retry-After``. Every call counts, failed ones too: they
+cost the same fetches and LLM calls.
+
 A URL that can't be fetched at all (or a matched board that won't answer)
 is a **422**: the user likely pasted a wrong URL, and a custom handler
 wouldn't fix that.
+
+Everything runs inside the request, so it has a time budget (BE-048) that
+ends before Nginx's 60s ``proxy_read_timeout``. Out of time while finding
+the source: ``needs_custom``. Out of time while scoring: the sample is
+returned unscored.
 """
 
 import asyncio
 import logging
+import math
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
@@ -36,14 +49,19 @@ from job_lighthouse_backend.job_runner.scoring import (
 )
 
 from .ats import match_board, normalize_url
+from .embeds import match_embedded_board
+from .rate_limit import RateLimiter
 from .selector_discovery import (
     PageLoader,
     Proposer,
+    Strategy,
     create_openai_proposer,
     discover_selectors,
     load_page,
 )
 from .sources import BoardSource, ManualSource
+
+Found = tuple[ManualSource, list[Opening]]
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +71,14 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 
 # Openings scored for the confirm screen. Bounds LLM cost and latency.
 SAMPLE_SIZE = 5
+
+# Seconds one detect may take, under Nginx's 60s default with margin. The
+# worst case without it: static GET (25s), LLM (60s), render (30s load +
+# 10s settle), LLM (60s), scoring (60s). So a slow discovery that would
+# have worked can be cut off as "too long". Raising it means raising
+# Nginx's proxy_read_timeout for /companies/detect first (BE-053).
+DETECT_BUDGET_SECONDS = 50.0
+TIMED_OUT = "detection took too long"
 
 
 class DetectIn(BaseModel):
@@ -113,6 +139,31 @@ def get_scorer(request: Request) -> Scorer | None:
     return scorer_for(request.app.state)
 
 
+async def get_detect_limiter(request: Request) -> RateLimiter:
+    """The per-user detect limiter. Built once per app."""
+    state = request.app.state
+    if getattr(state, "detect_limiter", None) is None:
+        state.detect_limiter = RateLimiter(
+            state.settings.detect_limit_per_hour, window_seconds=60 * 60
+        )
+    return state.detect_limiter
+
+
+async def check_detect_limit(
+    user_id: CurrentUserId,
+    limiter: Annotated[RateLimiter, Depends(get_detect_limiter)],
+) -> None:
+    # Async on purpose: FastAPI runs sync dependencies in a threadpool, and
+    # the limiter isn't thread-safe. On the event loop each hit is atomic.
+    retry_after = limiter.hit(user_id)
+    if retry_after is not None:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="too many detect requests, try again later",
+            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
+        )
+
+
 def _unprocessable(message: str) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=message)
 
@@ -132,10 +183,14 @@ async def _fetch_board(source: BoardSource, fetch: Fetcher) -> list[Opening]:
 @router.post(
     "/detect",
     response_model=DetectOut,
+    dependencies=[Depends(check_detect_limit)],
     responses={
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "The URL or its board can't be fetched"
-        }
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Over the per-user hourly detect limit"
+        },
     },
 )
 async def detect_company(
@@ -153,25 +208,23 @@ async def detect_company(
     await session.close()
 
     url = normalize_url(body.url)
-    source: ManualSource
+    # Running out of time cancels the awaits, but not the work already in a
+    # thread: a fetch or browser render runs on to its own timeout.
+    deadline = asyncio.get_running_loop().time() + DETECT_BUDGET_SECONDS
+    try:
+        async with asyncio.timeout_at(deadline):
+            found = await _find(url, fetch, _static_once(load), proposer)
+    except TimeoutError:
+        logger.warning("Detect ran out of time finding a source")
+        return _needs_custom(TIMED_OUT)
+    if isinstance(found, str):
+        return _needs_custom(found)
+    source, openings = found
     method: Literal["board", "selectors"]
-    board = match_board(url)
-    if board is not None:
-        source, method = board, "board"
-        company = board.board_id
-        openings = await _fetch_board(board, fetch)
+    if isinstance(source, BoardSource):
+        method, company = "board", source.board_id
     else:
-        if proposer is None:
-            return _needs_custom("selector discovery is not configured")
-        try:
-            found = await discover_selectors(url, proposer, load)
-        except FetchError as exc:
-            raise _unprocessable(f"page could not be loaded: {exc}") from None
-        if found.source is None:
-            return _needs_custom("no job list could be found on the page")
-        source, method = found.source, "selectors"
-        company = urlsplit(url).hostname or ""
-        openings = found.openings
+        method, company = "selectors", urlsplit(url).hostname or ""
 
     # Same URL = same job; keep the first.
     unique: dict[str, Opening] = {}
@@ -184,7 +237,11 @@ async def detect_company(
         postings = [
             Posting(o.title, company, o.location, o.description) for o in sample
         ]
-        matches = await score_postings(postings, profile.text, scorer)
+        try:
+            async with asyncio.timeout_at(deadline):
+                matches = await score_postings(postings, profile.text, scorer)
+        except TimeoutError:
+            logger.warning("Detect ran out of time scoring the sample")
 
     return DetectOut(
         status="detected",
@@ -202,6 +259,68 @@ async def detect_company(
             for o, m in zip(sample, matches, strict=True)
         ],
     )
+
+
+async def _find(
+    url: str, fetch: Fetcher, load: PageLoader, proposer: Proposer | None
+) -> Found | str:
+    """A source for ``url`` and its openings, or why it needs custom handling."""
+    board = match_board(url)
+    if board is not None:
+        return board, await _fetch_board(board, fetch)
+    embedded = await _embedded_board(url, fetch, load)
+    if embedded is not None:
+        return embedded
+    if proposer is None:
+        return "selector discovery is not configured"
+    try:
+        found = await discover_selectors(url, proposer, load)
+    except FetchError as exc:
+        raise _unprocessable(f"page could not be loaded: {exc}") from None
+    if found.source is None:
+        return "no job list could be found on the page"
+    return found.source, found.openings
+
+
+async def _embedded_board(url: str, fetch: Fetcher, load: PageLoader) -> Found | None:
+    """The board the page embeds or links to, if it answers. No LLM."""
+    try:
+        final_url, html = await asyncio.to_thread(load, url, "static")
+    except FetchError:
+        # Discovery reports it, and may still load the page in a browser.
+        return None
+    board = match_embedded_board(html, final_url)
+    if board is None:
+        return None
+    try:
+        return board, await asyncio.to_thread(fetch, board)
+    except Exception as exc:
+        # E.g. a stale link to an old board. The page loaded, so try it.
+        logger.info("Embedded %s board failed: %s", board.board, type(exc).__name__)
+        return None
+
+
+def _static_once(load: PageLoader) -> PageLoader:
+    """``load``, but the static page is fetched at most once per URL.
+
+    The embed check and selector discovery both read it.
+    """
+    pages: dict[str, tuple[str, str] | FetchError] = {}
+
+    def cached(url: str, strategy: Strategy) -> tuple[str, str]:
+        if strategy != "static":
+            return load(url, strategy)
+        if url not in pages:
+            try:
+                pages[url] = load(url, strategy)
+            except FetchError as exc:
+                pages[url] = exc
+        page = pages[url]
+        if isinstance(page, FetchError):
+            raise page
+        return page
+
+    return cached
 
 
 def _needs_custom(reason: str) -> DetectOut:

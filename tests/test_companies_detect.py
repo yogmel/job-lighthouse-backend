@@ -1,5 +1,6 @@
 """BE-035: POST /companies/detect."""
 
+import asyncio
 from collections.abc import Iterator
 from types import SimpleNamespace
 
@@ -9,12 +10,14 @@ from job_lighthouse_backend.common.settings import Settings
 from job_lighthouse_backend.companies import detect
 from job_lighthouse_backend.companies.detect import (
     SAMPLE_SIZE,
+    get_detect_limiter,
     get_fetcher,
     get_page_loader,
     get_proposer,
     get_scorer,
 )
 from job_lighthouse_backend.companies.main import app
+from job_lighthouse_backend.companies.rate_limit import RateLimiter
 from job_lighthouse_backend.companies.selector_discovery import Proposal
 from job_lighthouse_backend.job_runner.openings import FetchError, Opening
 from job_lighthouse_backend.job_runner.scoring import Match, Posting
@@ -43,6 +46,12 @@ class Fakes:
         self.loaded: list[tuple[str, str]] = []
         self.proposed: list[str] = []
         self.scored: list[tuple[str, Posting]] = []
+        # A fresh limit per test: one built on the module-level app would
+        # count every test's calls.
+        self.limiter = RateLimiter(20, window_seconds=3600)
+        # Seconds the LLM stand-ins take.
+        self.propose_delay = 0.0
+        self.score_delay = 0.0
 
     def fetch(self, source):
         self.fetched.append(source)
@@ -58,10 +67,12 @@ class Fakes:
 
     async def propose(self, url: str, html: str) -> Proposal | None:
         self.proposed.append(url)
+        await asyncio.sleep(self.propose_delay)
         return self.proposal
 
     async def score(self, profile: str, posting: Posting) -> Match:
         self.scored.append((profile, posting))
+        await asyncio.sleep(self.score_delay)
         if "fail" in posting.title:
             raise RuntimeError("LLM down")
         return Match(score=len(posting.title), description=f"why {posting.title}")
@@ -74,6 +85,7 @@ def fakes() -> Iterator[Fakes]:
     app.dependency_overrides[get_page_loader] = lambda: f.load
     app.dependency_overrides[get_proposer] = lambda: f.propose
     app.dependency_overrides[get_scorer] = lambda: f.score
+    app.dependency_overrides[get_detect_limiter] = lambda: f.limiter
     yield f
     app.dependency_overrides.clear()
 
@@ -278,7 +290,60 @@ def test_without_llm_key_unknown_url_needs_custom(
     body = _detect(companies_client, auth_header(user["id"]), "https://acme.example")
     assert body["status"] == "needs_custom"
     assert body["reason"] == "selector discovery is not configured"
-    assert fakes.loaded == []
+    # Only the embed check's static load (BE-050).
+    assert fakes.loaded == [("https://acme.example", "static")]
+
+
+EMBED = '<script src="https://boards.greenhouse.io/embed/job_board/js?for=acme">'
+EMBED_PAGE = f"<html><body><h1>Careers</h1>{EMBED}</script></body></html>"
+
+
+@needs_db
+def test_embedded_board_is_detected_without_llm(
+    companies_client, make_user, auth_header, fakes, db
+):
+    # BE-050: works with no LLM key, and never calls one.
+    user = make_user()
+    _set_profile(db, user["id"])
+    app.dependency_overrides[get_proposer] = lambda: None
+    fakes.page = ("https://acme.example/careers", EMBED_PAGE)
+    fakes.board_result = [Opening("Engineer", "https://jobs.example/1")]
+
+    body = _detect(companies_client, auth_header(user["id"]), "acme.example/careers")
+    assert body["status"] == "detected"
+    assert body["method"] == "board"
+    assert body["source"] == {
+        "kind": "board",
+        "board": "greenhouse",
+        "board_id": "acme",
+    }
+    assert body["jobs_found"] == 1
+    assert fakes.loaded == [("https://acme.example/careers", "static")]
+    assert [s.board_id for s in fakes.fetched] == ["acme"]
+    assert fakes.proposed == []
+    # Scored under the board slug, like a pasted board URL.
+    assert [p.company for _, p in fakes.scored] == ["acme"]
+
+
+@needs_db
+def test_failing_embedded_board_falls_through_to_discovery(
+    companies_client, make_user, auth_header, fakes
+):
+    # A stale widget on a working page is not a bad URL.
+    user = make_user()
+    fakes.page = (
+        "https://acme.example/",
+        PAGE.replace("<ul>", f"{EMBED}</script><ul>"),
+    )
+    fakes.board_result = FetchError("HTTP 404")
+
+    body = _detect(companies_client, auth_header(user["id"]), "https://acme.example")
+    assert body["status"] == "detected"
+    assert body["method"] == "selectors"
+    assert body["jobs_found"] == 2
+    assert len(fakes.fetched) == 1
+    # The static page is fetched once and shared with discovery.
+    assert fakes.loaded == [("https://acme.example", "static")]
 
 
 @needs_db
@@ -345,6 +410,69 @@ def test_only_own_profile_is_used(companies_client, make_user, auth_header, fake
 
     _detect(companies_client, auth_header(me["id"]), "jobs.lever.co/acme")
     assert fakes.scored == []
+
+
+@needs_db
+def test_slow_discovery_needs_custom_within_budget(
+    companies_client, make_user, auth_header, fakes, monkeypatch
+):
+    # BE-048: answer before the proxy times out instead of a 504.
+    monkeypatch.setattr(detect, "DETECT_BUDGET_SECONDS", 0.2)
+    user = make_user()
+    fakes.propose_delay = 5
+
+    body = _detect(companies_client, auth_header(user["id"]), "https://acme.example")
+    assert body["status"] == "needs_custom"
+    assert body["reason"] == "detection took too long"
+    assert fakes.proposed == ["https://acme.example"]
+
+
+@needs_db
+def test_slow_scoring_returns_sample_unscored(
+    companies_client, make_user, auth_header, fakes, db, monkeypatch
+):
+    monkeypatch.setattr(detect, "DETECT_BUDGET_SECONDS", 0.2)
+    user = make_user()
+    _set_profile(db, user["id"])
+    fakes.score_delay = 5
+    fakes.board_result = [Opening("Engineer", "https://jobs.example/1")]
+
+    body = _detect(companies_client, auth_header(user["id"]), "jobs.lever.co/acme")
+    assert body["status"] == "detected"
+    assert body["jobs_found"] == 1
+    assert body["sample"][0]["title"] == "Engineer"
+    assert body["sample"][0]["match_score"] is None
+    assert len(fakes.scored) == 1
+
+
+@needs_db
+def test_over_hourly_limit_is_429(companies_client, make_user, auth_header, fakes):
+    # BE-049. Every call counts, the failing ones too.
+    fakes.limiter = RateLimiter(2, window_seconds=3600)
+    me, other = make_user(), make_user()
+    headers = auth_header(me["id"])
+    _detect(companies_client, headers, "jobs.lever.co/acme")
+    fakes.board_result = FetchError("HTTP 404")
+    _detect(companies_client, headers, "jobs.lever.co/acme", expected=422)
+
+    resp = companies_client.post(
+        "/companies/detect", headers=headers, json={"url": "jobs.lever.co/acme"}
+    )
+    assert resp.status_code == 429
+    assert resp.json()["detail"] == "too many detect requests, try again later"
+    assert 3500 < int(resp.headers["Retry-After"]) <= 3600
+    # No work done for the rejected call.
+    assert len(fakes.fetched) == 2
+    # Per user.
+    fakes.board_result = []
+    _detect(companies_client, auth_header(other["id"]), "jobs.lever.co/acme")
+
+
+def test_get_detect_limiter_is_built_once():
+    request = _request(detect_limit_per_hour=3)
+    limiter = asyncio.run(get_detect_limiter(request))  # type: ignore[arg-type]
+    assert asyncio.run(get_detect_limiter(request)) is limiter  # type: ignore[arg-type]
+    assert (limiter.limit, limiter.window) == (3, 3600)
 
 
 def _request(**settings) -> SimpleNamespace:
