@@ -153,8 +153,8 @@ def test_other_field_errors_stay_422(
     assert resp.status_code == 422
 
 
-def test_deleted_user_is_404(companies_client, auth_header):
+def test_deleted_user_is_401(companies_client, auth_header):
     resp = companies_client.post(
         "/companies", headers=auth_header(uuid.uuid4()), json=_payload()
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 401

@@ -3,6 +3,10 @@
 Tokens are HS256-signed with the shared ``JWT_SECRET``. Each service checks
 them locally; there is no call back to the Companies Service per request.
 The ``sub`` claim carries the ``user_id``.
+
+Protected routes also check that the user still exists (one primary-key
+lookup on the shared DB), so a deleted account's tokens stop working at once
+instead of at expiry (BE-044).
 """
 
 import uuid
@@ -12,12 +16,17 @@ from typing import Annotated
 import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import column, select, table
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from .settings import Settings
 
 ALGORITHM = "HS256"
 
 _bearer = HTTPBearer(auto_error=False)
+
+# Owned by the Companies Service. Both services only check a row exists.
+_users = table("users", column("id"))
 
 
 class InvalidTokenError(Exception):
@@ -60,14 +69,28 @@ async def get_current_user_id(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> uuid.UUID:
-    """FastAPI dependency for protected routes. 401 on missing/invalid/expired."""
+    """FastAPI dependency for protected routes.
+
+    401 on a missing, invalid or expired token, or one whose user is gone.
+    """
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise _unauthorized()
     settings: Settings = request.app.state.settings
     try:
-        return decode_token(credentials.credentials, settings.jwt_secret)
+        user_id = decode_token(credentials.credentials, settings.jwt_secret)
     except InvalidTokenError:
         raise _unauthorized() from None
+    if not await user_exists(request.app.state.engine, user_id):
+        raise _unauthorized()
+    return user_id
+
+
+async def user_exists(engine: AsyncEngine, user_id: uuid.UUID) -> bool:
+    # Its own short connection: the route may not use the DB at all, or may
+    # hand its session's connection back early (e.g. before a slow fetch).
+    async with engine.connect() as conn:
+        found = await conn.scalar(select(_users.c.id).where(_users.c.id == user_id))
+    return found is not None
 
 
 CurrentUserId = Annotated[uuid.UUID, Depends(get_current_user_id)]

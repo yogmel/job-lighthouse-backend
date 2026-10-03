@@ -424,6 +424,7 @@ backend code on `main` as of BE-011 – BE-015.
 | `POST /auth/google` | `{ id_token }` (from Google Identity Services)      | `200 { access_token, token_type: "bearer" }` |
 | `GET /account`      | none                                                | `200 Account`                                |
 | `PUT /account`      | `{ current_password?, email?, new_password? }` (at least one of `email`, `new_password`) | `200 Account` |
+| `DELETE /account`   | `{ current_password? }`                             | `204`, no body                               |
 
 - `Account` is `{ id, email, email_verified, has_password, google_linked, created_at }`.
 - `access_token` is the JWT. Its payload carries `sub` (the user id), `iat`
@@ -435,9 +436,9 @@ backend code on `main` as of BE-011 – BE-015.
     - an invalid Google token;
     - a missing, invalid or expired JWT on any protected route. **This is the
       only status that logs the user out.**
-  - `403 { detail }`: `PUT /account` with a missing or wrong
-    `current_password`. The frontend shows it on the current-password field
-    and keeps the session.
+  - `403 { detail }`: `PUT /account` or `DELETE /account` with a missing
+    or wrong `current_password`. The frontend shows it on the
+    current-password field and keeps the session.
   - `409 { detail }`:
     - signup with an email that's already registered;
     - `PUT /account` to an email another account uses;
@@ -449,6 +450,14 @@ backend code on `main` as of BE-011 – BE-015.
     frontend shows `msg` under `<field>`.
   - `503 { detail }`: `/auth/google` when `GOOGLE_CLIENT_ID` isn't set on the
     server.
+- **`DELETE /account`** (BE-044): an account with a password must send
+  `current_password`; a Google-only account sends no body. It deletes the
+  user and, by cascade, their config, companies, jobs, runs, run company
+  results and reset tokens. It can't be undone. Right after, every request
+  with that user's token gets `401` (both services), so the frontend's
+  usual 401 handling logs them out.
+- A token whose user no longer exists is a `401` on every protected route
+  (it used to be a `404` or an empty list).
 - **CORS:** the browser calls both services directly from the Vercel origin,
   so both must answer preflight `OPTIONS` requests and allow that origin with
   the `Authorization` and `Content-Type` headers. **Not implemented yet**; see
@@ -661,6 +670,11 @@ every other table.
 signing secret — no network call to the Auth module per request. The token
 carries `user_id`, which is already the join key on every table, so
 authorization is just "does this row's `user_id` match the token's."
+
+Since BE-044, each protected request also checks that the token's user
+still exists: one primary-key lookup on `users` in the shared database
+(still no call to the Companies Service). A deleted account's tokens then
+get a `401` at once instead of working until they expire.
 
 ### Decisions made while building v0.2 (BE-011 – BE-015)
 
