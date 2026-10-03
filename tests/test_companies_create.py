@@ -97,6 +97,11 @@ def test_create_scraper_company_paused(companies_client, make_user, auth_header,
             {"kind": "board", "board": "lever", "board_id": " "}, id="blank-board-id"
         ),
         pytest.param(BOARD_SOURCE | {"strategy": "static"}, id="extra-field"),
+        pytest.param(BOARD_SOURCE | {"region": "eu"}, id="region-on-greenhouse"),
+        pytest.param(
+            {"kind": "board", "board": "lever", "board_id": "x", "region": "us"},
+            id="unknown-region",
+        ),
         pytest.param({"kind": "scraper", "strategy": "static"}, id="no-selectors"),
         pytest.param(SCRAPER_SOURCE | {"strategy": "headless"}, id="bad-strategy"),
         pytest.param(

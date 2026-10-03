@@ -299,7 +299,7 @@ is enforced by the type.
 
 ```ts
 type Source =
-  | { kind: "board"; board: Board; board_id: string; region?: "eu" | null }
+  | { kind: "board"; board: Board; board_id: string; region?: "eu" }
   | { kind: "scraper"; strategy: "static" | "dynamic"; selectors: Selectors }
   | { kind: "custom"; handler: string };
 ```
@@ -307,11 +307,12 @@ type Source =
 - `board_id` — the company's slug on that board (`stripe`, `kraken-technologies`).
   Needed to build the ATS API URL; often differs from `name`.
 - `region` — `"eu"` for a Lever board hosted in the EU (`jobs.eu.lever.co`),
-  whose API is `api.eu.lever.co`. Absent or `null` = the default (US) host,
-  so rows stored before it existed stay valid. Only Lever takes it:
-  EU-hosted Greenhouse boards (`job-boards.eu.greenhouse.io`) are served by
-  the same `boards-api.greenhouse.io` API as the rest, and Ashby and
-  SmartRecruiters have one host.
+  whose API is `api.eu.lever.co`. Absent = the default (US) host, so rows
+  stored before it existed stay valid; responses leave it out when unset.
+  Only Lever takes it: EU-hosted Greenhouse boards
+  (`job-boards.eu.greenhouse.io`) are served by the same
+  `boards-api.greenhouse.io` API as the rest, and Ashby and SmartRecruiters
+  have one host.
 - `careers_url` lives inside `Selectors`, not on the company: only the scraper
   branch needs a jobs page. `website_url` stays the marketing site the dashboard
   links to.

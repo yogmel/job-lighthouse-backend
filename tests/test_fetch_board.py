@@ -91,6 +91,22 @@ def test_lever():
     assert http.calls == [("https://api.lever.co/v0/postings/acme", {"mode": "json"})]
 
 
+def test_lever_eu_uses_eu_api_host():
+    # BE-052: jobs.eu.lever.co boards 404 on api.lever.co.
+    http = FakeHttp(
+        _response(body=[{"text": "PM", "hostedUrl": "https://jobs.eu.lever.co/acme/d"}])
+    )
+    source = BoardSource.model_validate(
+        {"kind": "board", "board": "lever", "board_id": "acme", "region": "eu"}
+    )
+    assert fetch_board(source, http) == [
+        Opening("PM", "https://jobs.eu.lever.co/acme/d")
+    ]
+    assert http.calls == [
+        ("https://api.eu.lever.co/v0/postings/acme", {"mode": "json"})
+    ]
+
+
 def test_ashby_skips_unlisted():
     http = FakeHttp(
         _response(

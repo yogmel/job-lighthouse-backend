@@ -165,6 +165,26 @@ def test_known_board_is_verified_without_llm(
 
 
 @needs_db
+def test_eu_lever_board_round_trips_its_region(
+    companies_client, make_user, auth_header, fakes, db
+):
+    # BE-052: the region survives detect -> confirm -> storage.
+    user = make_user()
+    headers = auth_header(user["id"])
+    fakes.board_result = [Opening("PM", "https://jobs.eu.lever.co/acme/1")]
+
+    body = _detect(companies_client, headers, "https://jobs.eu.lever.co/acme")
+    source = {"kind": "board", "board": "lever", "board_id": "acme", "region": "eu"}
+    assert (body["method"], body["source"]) == ("board", source)
+    assert [s.region for s in fakes.fetched] == ["eu"]
+    assert fakes.proposed == []
+
+    company = _confirm(companies_client, headers, body["source"])
+    assert company["source"] == source
+    assert _stored_source(db, company["id"]) == source
+
+
+@needs_db
 def test_board_with_zero_openings_is_detected(
     companies_client, make_user, auth_header, fakes
 ):
