@@ -424,8 +424,16 @@ backend code on `main` as of BE-011 – BE-015.
 | `POST /auth/google` | `{ id_token }` (from Google Identity Services)      | `200 { access_token, token_type: "bearer" }` |
 | `GET /account`      | none                                                | `200 Account`                                |
 | `PUT /account`      | `{ current_password?, email?, new_password? }` (at least one of `email`, `new_password`) | `200 Account` |
+| `GET /account/export` | none                                              | `200 Export`                                 |
 
 - `Account` is `{ id, email, email_verified, has_password, google_linked, created_at }`.
+- `Export` (BE-043) is `{ exported_at, account, config, companies, jobs,
+  runs, run_company_results }`. `account` is an `Account`. `config` is one
+  object or `null`. Every other key is a list of that table's rows, each
+  with all of its columns (snake_case, as in [Schemas](#schemas)), oldest
+  first. `run_company_results` are the ones from the caller's runs.
+  Password and reset-token hashes are never included. `404` if the
+  account no longer exists.
 - `access_token` is the JWT. Its payload carries `sub` (the user id), `iat`
   and `exp`. Send it as `Authorization: Bearer <token>` to both services.
 - Errors use FastAPI's `{ detail }` shape. `detail` strings are
