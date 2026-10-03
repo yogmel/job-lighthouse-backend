@@ -776,7 +776,7 @@ OpenAI call can take up to 60s, and `nginx/` sets no `proxy_read_timeout`
   budget inside the request, or 202 + poll like BE-045)
 - The add-company flow (FE-012) still shows the resolving state
 
-### BE-049 · Rate-limit POST /companies/detect
+### ~~BE-049 · Rate-limit POST /companies/detect~~
 
 **Target:** backend **Version:** v0.8
 
