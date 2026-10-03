@@ -125,6 +125,7 @@ def test_new_account_exports_empty(companies_client, make_user, auth_header):
         assert body[table] == []
 
 
-def test_unknown_user_is_404(companies_client, auth_header):
+def test_unknown_user_gets_nothing(companies_client, auth_header):
+    # 404 from the route; 401 from the auth check once BE-044 lands.
     resp = companies_client.get("/account/export", headers=auth_header(uuid.uuid4()))
-    assert resp.status_code == 404
+    assert resp.status_code in (401, 404)

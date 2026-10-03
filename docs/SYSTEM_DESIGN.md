@@ -432,8 +432,7 @@ backend code on `main` as of BE-011 – BE-015.
   object or `null`. Every other key is a list of that table's rows, each
   with all of its columns (snake_case, as in [Schemas](#schemas)), oldest
   first. `run_company_results` are the ones from the caller's runs.
-  Password and reset-token hashes are never included. `404` if the
-  account no longer exists.
+  Password and reset-token hashes are never included.
 - `access_token` is the JWT. Its payload carries `sub` (the user id), `iat`
   and `exp`. Send it as `Authorization: Bearer <token>` to both services.
 - Errors use FastAPI's `{ detail }` shape. `detail` strings are
