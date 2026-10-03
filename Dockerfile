@@ -16,13 +16,21 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
     PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH" \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
 # Dependencies first, so code changes don't reinstall them.
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --locked --no-dev --no-install-project
+
+# PROJ-009: Chromium for `dynamic` scrapes and the detect browser fallback.
+# Headless shell only (launch() is headless). Installed under a shared path,
+# not root's home, so the non-root `app` user can read it.
+RUN playwright install --with-deps --only-shell chromium \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod -R a+rX /ms-playwright
 
 COPY src ./src
 COPY alembic.ini ./

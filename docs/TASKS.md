@@ -527,7 +527,7 @@ List view with active/company/tier filters.
 
 BE-019 – BE-026 are merged. Found while building them:
 
-### PROJ-009 · Chromium in the Docker image for dynamic scrapes
+### ~~PROJ-009 · Chromium in the Docker image for dynamic scrapes~~
 
 **Target:** project **Version:** v0.4
 
