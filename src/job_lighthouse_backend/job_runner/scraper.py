@@ -37,6 +37,9 @@ MAX_PAGE_BYTES = 5 * 1024 * 1024
 # Playwright timeouts are in milliseconds.
 RENDER_TIMEOUT_MS = 30_000
 SELECTOR_WAIT_MS = 10_000
+# Selector discovery has no selector to wait on: it waits this long at most
+# for the network to go quiet, so job lists fetched after ``load`` show up.
+SETTLE_WAIT_MS = 10_000
 
 # Takes a URL, returns (final URL, HTML).
 Renderer = Callable[[str, Selectors], tuple[str, str]]
@@ -144,7 +147,11 @@ def render_with_playwright(url: str, selectors: Selectors) -> tuple[str, str]:
 
 def render_page(url: str, wait_for: str | None = None) -> tuple[str, str]:
     """Like ``render_with_playwright``; waits for ``wait_for`` if given, else
-    only for the page's ``load`` event."""
+    for the network to go idle (bounded by ``SETTLE_WAIT_MS``).
+
+    Network idle is waited for after ``load``, not as ``goto``'s condition:
+    a page that polls never goes idle, and that must still parse.
+    """
     check_public_url(url)
     try:
         with sync_playwright() as pw:
@@ -157,9 +164,11 @@ def render_page(url: str, wait_for: str | None = None) -> tuple[str, str]:
                     status = "no response" if resp is None else f"HTTP {resp.status}"
                     raise FetchError(status)
                 # No cards showing up is parsed as zero matches, not an error.
-                if wait_for is not None:
-                    with contextlib.suppress(PlaywrightError):
+                with contextlib.suppress(PlaywrightError):
+                    if wait_for is not None:
                         page.wait_for_selector(wait_for, timeout=SELECTOR_WAIT_MS)
+                    else:
+                        page.wait_for_load_state("networkidle", timeout=SETTLE_WAIT_MS)
                 return page.url, page.content()
             finally:
                 browser.close()
