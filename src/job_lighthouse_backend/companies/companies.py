@@ -28,7 +28,7 @@ from job_lighthouse_backend.job_runner.company_run import (
 )
 
 from .models import Company
-from .sources import ManualSource, NonEmptyStr, Source
+from .sources import NonEmptyStr, Source
 
 
 class _SourceErrorsAre400(APIRoute):
@@ -78,7 +78,7 @@ class CompanyCreate(BaseModel):
     tier: int
     website_url: HttpUrl
     active: bool = True
-    source: ManualSource
+    source: Source
 
 
 class CompanyUpdate(BaseModel):
@@ -89,7 +89,7 @@ class CompanyUpdate(BaseModel):
     website_url: HttpUrl | None = None
     active: bool | None = None
     # Replaces the whole source; no merging with the stored one.
-    source: ManualSource | None = None
+    source: Source | None = None
 
     @model_validator(mode="after")
     def _check_fields(self) -> "CompanyUpdate":
@@ -106,7 +106,7 @@ class SourceTestOut(BaseModel):
 
     - ``ok``: reachable; ``jobs_found`` may be 0.
     - ``failed``: the fetch failed; ``error`` says why.
-    - ``skipped``: the source can't be fetched yet (``custom``).
+    - ``skipped``: a ``custom`` source whose handler isn't shipped yet.
     """
 
     status: Literal["ok", "failed", "skipped"]
@@ -143,9 +143,10 @@ async def list_companies(user_id: CurrentUserId, session: Session) -> list[Compa
 async def create_company(
     body: CompanyCreate, user_id: CurrentUserId, session: Session
 ) -> CompanyOut:
-    """Add a company with an explicit ``board`` or ``scraper`` source.
+    """Add a company with an explicit ``board``, ``scraper`` or ``custom`` source.
 
-    Stored as given: no detection and no test fetch.
+    Stored as given: no detection and no test fetch. A ``custom`` handler
+    name isn't checked: the company can wait (paused) for its handler.
     """
     company = Company(
         user_id=user_id,

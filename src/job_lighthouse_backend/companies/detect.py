@@ -59,9 +59,9 @@ from .selector_discovery import (
     discover_selectors,
     load_page,
 )
-from .sources import BoardSource, ManualSource
+from .sources import BoardSource, DetectedSource
 
-Found = tuple[ManualSource, list[Opening]]
+Found = tuple[DetectedSource, list[Opening]]
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ class DetectOut(BaseModel):
     status: Literal["detected", "needs_custom"]
     # How the source was found.
     method: Literal["board", "selectors"] | None
-    source: ManualSource | None
+    source: DetectedSource | None
     jobs_found: int
     sample: list[SampleJob]
     # Why it needs custom handling, else null.

@@ -891,7 +891,7 @@ Next run estimate, today's totals, run history, per-company breakdown.
 
 ## v0.10 — Custom handler escape hatch
 
-### BE-039 · Source.kind: "custom" support
+### ~~BE-039 · Source.kind: "custom" support~~
 
 **Target:** backend **Version:** v0.10
 
@@ -902,7 +902,7 @@ Extend the `Source` union/validation to accept `{kind: "custom", handler}`.
 - `POST`/`PUT /companies` accept a `custom` source (previously rejected in
   BE-017)
 
-### BE-040 · Pipeline support for custom handlers
+### ~~BE-040 · Pipeline support for custom handlers~~
 
 **Target:** backend **Version:** v0.10
 
