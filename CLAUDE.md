@@ -21,10 +21,11 @@ Frontend (Next.js on Vercel) lives in a separate repo. Tickets prefixed
 
 - Python 3.13, managed with **uv** (`uv_build` backend)
 - FastAPI for both services
-- Postgres (self-hosted in Docker Compose), migrations shared by both services
-  (Alembic suggested, see BE-001)
+- Postgres (self-hosted in Docker Compose), Alembic migrations shared by
+  both services, SQLAlchemy async
 - Playwright for `scraper` sources with `strategy: "dynamic"`
-- Transactional email API (Resend / Postmark / SES — not yet chosen)
+- OpenAI for match scoring and selector discovery
+- Resend for transactional email
 - Deploy: Docker Compose on one DigitalOcean droplet, Nginx in front,
   GitHub Actions builds and deploys on push to `main`
 
@@ -39,7 +40,9 @@ Two services behind Nginx. Everything else is a module, not a deploy.
 
 - **Do not** split Auth or the scheduler into their own services.
 - Both services validate JWTs **locally** with a shared secret. No calls to
-  Auth per request. The token carries `user_id`.
+  Auth per request. The token carries `user_id`. Each request also checks
+  that the user row still exists (one DB lookup), so a deleted account's
+  tokens stop working at once.
 
 ## Rules that are easy to break
 
@@ -106,7 +109,27 @@ shared company catalog, email-verification gate. See VERSIONING.md →
 
 ## Current state
 
-Only a uv skeleton exists (`pyproject.toml`, empty `src/__init__.py`). Nothing
-from v0.1 is built yet. The `[project.scripts]` entry points to
-`job_lighthouse_backend:main`, which doesn't exist — expect to replace it
-when scaffolding the services (BE-007 / BE-008).
+Backend tickets for v0.1 – v0.11 are built; v1.0 (cutover) is next. Struck
+tickets in `docs/TASKS.md` are done. Setup, commands, env vars, code layout,
+CI and deploy are in `README.md` — read it rather than guessing a command.
+
+## Working in this repo
+
+- **Ticket workflow.** One branch and PR per ticket (or tightly linked
+  pair), named after it. The required `pr-title` check fails unless the
+  title starts with a ticket ID. Strike the ticket in `docs/TASKS.md` and
+  update `docs/SYSTEM_DESIGN.md` in the same PR. Put `Closes #<issue>` in
+  the body.
+- **DB tests skip silently** without `DATABASE_URL`. A green `uv run pytest`
+  with skips proves nothing: use `make test` / `make cov` (they load
+  `.env`), or `set -a; . ./.env; set +a` first. In a new git worktree,
+  `.env` isn't there; ask the user to copy it.
+- **`.env*` files can't be edited** by Claude (denied in
+  `.claude/settings.json`). Ask the user to change `.env.example`.
+- **`tests/test_cors.py` reloads the service modules**, which replaces
+  `main.app`. Set dependency overrides on `companies_client.app` /
+  `runner_client.app`, not on an imported `app`.
+- **Semgrep flags log calls** whose message mentions passwords or tokens,
+  even with nothing secret in them. Reword the message.
+- **Before pushing:** `make lint typecheck cov`. CI also runs Semgrep,
+  gitleaks, pip-audit and a Trivy image scan (see `README.md` → CI & hooks).

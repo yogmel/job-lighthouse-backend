@@ -1,6 +1,74 @@
 # Job Lighthouse — Backend
 
-See `CLAUDE.md` and `docs/` for architecture and tickets.
+Tracks job openings at companies a user picks. Users add companies, a runner
+fetches their openings on a schedule, an LLM scores each new job against the
+user's profile, and a digest email lists the new ones.
+
+Two FastAPI services on one Postgres, behind Nginx. The frontend (Next.js on
+Vercel) lives in a separate repo.
+
+| Doc | What's in it |
+| --- | --- |
+| [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) | Source of truth: schemas, full API table and shapes, pipeline, decisions |
+| [`docs/VERSIONING.md`](docs/VERSIONING.md) | Build order v0.1 → v1.0 |
+| [`docs/TASKS.md`](docs/TASKS.md) | Tickets (`BE-`, `FE-`, `PROJ-`) with acceptance criteria; done ones are struck through |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Droplet setup, secrets, operations, rollback |
+| [`CLAUDE.md`](CLAUDE.md) | Rules for coding agents (and humans) working in this repo |
+
+## What it does
+
+Backend tickets for v0.1 – v0.11 are built. v1.0 (cutover from the old
+script) is not. The full route list is in
+[SYSTEM_DESIGN.md → API design](docs/SYSTEM_DESIGN.md#api-design).
+
+| Area | Routes | Service |
+| --- | --- | --- |
+| Auth | `POST /auth/signup`, `/auth/login`, `/auth/google`, `/auth/password-reset/request`, `/auth/password-reset/confirm` | Companies |
+| Account | `GET`/`PUT`/`DELETE /account`, `GET /account/export` | Companies |
+| Companies | `GET`/`POST /companies`, `PUT /companies/{id}`, `POST /companies/detect`, `POST /companies/{id}/test` | Companies |
+| Profile & schedule | `GET`/`PUT /config` | Job Runner |
+| Jobs | `GET /jobs` (paginated) | Job Runner |
+| Runs | `POST /runs` (manual run), `GET /runs`, `GET /runs/{id}/companies` | Job Runner |
+
+- **Sources.** A company is fetched from a job board (Lever, Greenhouse,
+  Ashby, SmartRecruiters), by scraping its careers page with CSS selectors
+  (static HTML or Playwright), or by a per-company `custom` handler.
+- **Onboarding.** `POST /companies/detect` takes a careers URL. It matches
+  known ATS URLs first and asks the LLM for selectors only if none match.
+- **Runs.** A tick loop in the Job Runner starts each user's run on their
+  `Config.cron`. Manual and scheduled runs share one pipeline and one
+  Postgres advisory lock.
+- **Scoring and digest.** New jobs get a match score from OpenAI. After a
+  run, unnotified open jobs go out in one email via Resend.
+- **Optional parts.** Scoring, email and Google sign-in each switch off
+  cleanly when their key is unset (see the env block below).
+
+## Quick start
+
+Prerequisites: **Python 3.13**, **[uv](https://docs.astral.sh/uv/)**,
+**Docker** with `docker-compose` (or the Compose plugin, see below).
+
+```sh
+git clone https://github.com/yogmel/job-lighthouse-backend.git
+cd job-lighthouse-backend
+uv sync                          # Python deps, incl. dev tools
+cp .env.example .env             # then fill it in, see "Env vars" below
+make db-up                       # Postgres in Docker
+make migrate-up                  # create the tables
+make run-companies               # :8002, in one terminal
+make run-job-runner              # :8001, in another
+curl localhost:8001/health localhost:8002/health
+make test                        # or `make cov`, as CI runs it
+```
+
+- **Interactive API docs:** FastAPI serves them at
+  `localhost:8001/docs` and `localhost:8002/docs`.
+- **Dynamic scrapes locally:** `scraper` sources with
+  `strategy: "dynamic"`, and the browser fallback in detection, need
+  Chromium: `uv run playwright install chromium`. The Docker image already
+  has it.
+- **Whole stack in Docker:** `make certs && make up`. See
+  [Docker Compose](#docker-compose).
 
 ## Local database & migrations
 
@@ -33,6 +101,7 @@ JWT_SECRET=change-me
 # Transactional email (Resend). Without a key, no email is sent.
 # RESEND_API_KEY=...
 # EMAIL_FROM=Job Lighthouse <digest@example.com>   # required with the key
+# PASSWORD_RESET_URL=http://localhost:3000/reset-password  # reset emails link here
 
 # Job Runner cron tick loop. Default true; false stops scheduled runs.
 # SCHEDULER_ENABLED=true
@@ -84,12 +153,43 @@ Both services are FastAPI apps in `src/job_lighthouse_backend/`, sharing
 make run-job-runner   # needs DATABASE_URL (from .env) and a running Postgres
 make run-companies
 curl localhost:8001/health localhost:8002/health
-make test
 ```
 
-- Settings come from env vars only. Required: `DATABASE_URL`.
+- Settings come from env vars only. Required: `DATABASE_URL`, `JWT_SECRET`.
 - On startup each service runs `SELECT 1`. If Postgres is unreachable it
   logs the error and exits non-zero.
+- Both services check JWTs themselves with the shared `JWT_SECRET`. A token
+  whose user no longer exists gets `401`.
+
+### Code layout
+
+```
+src/job_lighthouse_backend/
+  common/       settings, DB engine, app factory, JWT check, email client
+  companies/    Companies Service: auth/, account, export, companies,
+                detection (ats, embeds, selector_discovery), sources
+  job_runner/   Job Runner Service: config, jobs, runs API, scheduler,
+                pipeline (company_run, boards, scraper, handlers, sync),
+                scoring, digest
+migrations/     Alembic, shared by both services
+tests/          pytest, one file per feature
+```
+
+## Tests
+
+```sh
+make db-up && make migrate-up   # once
+make test                       # pytest
+make cov                        # pytest + coverage, as CI runs it
+```
+
+- Tests that need Postgres are **skipped**, not failed, when
+  `DATABASE_URL` is unset or the DB is down. The `make` targets load it
+  from `.env`. With plain `uv run pytest`, export it first
+  (`set -a; . ./.env; set +a`).
+- Tests share one database (the one in `DATABASE_URL`) and delete the
+  users they create.
+- Network calls (boards, OpenAI, Resend, Google) are faked. No keys needed.
 
 ## Docker Compose
 

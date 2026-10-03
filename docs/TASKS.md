@@ -999,6 +999,19 @@ Change credentials (already v0.2), plus export and delete-account actions.
 
 - Delete requires an explicit confirmation step before calling the API
 
+### ~~PROJ-010 · README and CLAUDE.md catch-up~~
+
+**Target:** project **Version:** v0.11
+
+The README only covered infra; CLAUDE.md still described an empty skeleton.
+
+**Acceptance criteria:**
+
+- README has a feature summary, prerequisites, a quick start and a tests
+  section, and links to the docs instead of repeating them
+- CLAUDE.md's stack and current state match the code, with repo
+  pitfalls listed once
+
 ---
 
 ## v1.0 — Cutover
