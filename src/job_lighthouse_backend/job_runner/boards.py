@@ -43,8 +43,9 @@ class _GreenhouseBoard(_Shape):
     jobs: list[_GreenhouseJob]
 
 
-def _greenhouse(http: HttpClient, board_id: str) -> list[Opening]:
-    url = f"https://boards-api.greenhouse.io/v1/boards/{quote(board_id, safe='')}/jobs"
+def _greenhouse(http: HttpClient, source: BoardSource) -> list[Opening]:
+    token = quote(source.board_id, safe="")
+    url = f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
     board = _GreenhouseBoard.model_validate(get_json(http, url))
     return [
         Opening(
@@ -57,6 +58,9 @@ def _greenhouse(http: HttpClient, board_id: str) -> list[Opening]:
 
 
 # --- Lever: GET api.lever.co/v0/postings/{site}?mode=json
+# EU-hosted boards (jobs.eu.lever.co) answer only on api.eu.lever.co.
+
+_LEVER_API_HOSTS = {None: "api.lever.co", "eu": "api.eu.lever.co"}
 
 
 class _LeverCategories(_Shape):
@@ -70,8 +74,9 @@ class _LeverPosting(_Shape):
     descriptionPlain: str | None = None
 
 
-def _lever(http: HttpClient, board_id: str) -> list[Opening]:
-    url = f"https://api.lever.co/v0/postings/{quote(board_id, safe='')}"
+def _lever(http: HttpClient, source: BoardSource) -> list[Opening]:
+    site = quote(source.board_id, safe="")
+    url = f"https://{_LEVER_API_HOSTS[source.region]}/v0/postings/{site}"
     raw = get_json(http, url, params={"mode": "json"})
     if not isinstance(raw, list):
         raise FetchError("unexpected response shape")
@@ -102,8 +107,9 @@ class _AshbyBoard(_Shape):
     jobs: list[_AshbyJob]
 
 
-def _ashby(http: HttpClient, board_id: str) -> list[Opening]:
-    url = f"https://api.ashbyhq.com/posting-api/job-board/{quote(board_id, safe='')}"
+def _ashby(http: HttpClient, source: BoardSource) -> list[Opening]:
+    name = quote(source.board_id, safe="")
+    url = f"https://api.ashbyhq.com/posting-api/job-board/{name}"
     board = _AshbyBoard.model_validate(get_json(http, url))
     return [
         Opening(
@@ -146,8 +152,8 @@ def _smartrecruiters_location(loc: _SmartRecruitersLocation | None) -> str:
     return ", ".join(p for p in (loc.city, loc.region, loc.country) if p)
 
 
-def _smartrecruiters(http: HttpClient, board_id: str) -> list[Opening]:
-    company = quote(board_id, safe="")
+def _smartrecruiters(http: HttpClient, source: BoardSource) -> list[Opening]:
+    company = quote(source.board_id, safe="")
     url = f"https://api.smartrecruiters.com/v1/companies/{company}/postings"
     postings: list[_SmartRecruitersPosting] = []
     for page in range(SMARTRECRUITERS_MAX_PAGES):
@@ -171,7 +177,7 @@ def _smartrecruiters(http: HttpClient, board_id: str) -> list[Opening]:
     ]
 
 
-_FETCHERS: dict[Board, Callable[[HttpClient, str], list[Opening]]] = {
+_FETCHERS: dict[Board, Callable[[HttpClient, BoardSource], list[Opening]]] = {
     "greenhouse": _greenhouse,
     "lever": _lever,
     "ashby": _ashby,
@@ -187,8 +193,8 @@ def fetch_board(source: BoardSource, http: HttpClient | None = None) -> list[Ope
     fetch = _FETCHERS[source.board]
     try:
         if http is not None:
-            return fetch(http, source.board_id)
+            return fetch(http, source)
         with requests.Session() as session:
-            return fetch(session, source.board_id)
+            return fetch(session, source)
     except ValidationError as exc:
         raise FetchError("unexpected response shape") from exc

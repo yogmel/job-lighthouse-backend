@@ -824,7 +824,7 @@ This is probably the most common thing users paste.
 - Embed detection reads the fetched HTML (script `src`, iframe `src`,
   links); only known board hosts count
 
-### BE-051 · Wait for client-rendered job lists in selector discovery
+### ~~BE-051 · Wait for client-rendered job lists in selector discovery~~
 
 **Target:** backend **Version:** v0.8
 
@@ -838,7 +838,7 @@ back `needs_custom`.
   bounded by the existing render timeout)
 - Scheduled `dynamic` scrapes keep waiting on `selectors.job` as today
 
-### BE-052 · Support EU-hosted Greenhouse and Lever boards
+### ~~BE-052 · Support EU-hosted Greenhouse and Lever boards~~
 
 **Target:** backend **Version:** v0.8
 

@@ -4,12 +4,14 @@ Pure string matching, no network and no LLM. A known board's careers or API
 URL resolves to a ``BoardSource``; anything else (other hosts, junk input)
 is ``None``, never an error.
 
-Only hosts the board fetchers can serve are matched. EU-hosted Greenhouse
-(``*.eu.greenhouse.io``) and Lever (``jobs.eu.lever.co``) use other API
-hosts, so they fall through to selector discovery for now.
+Only hosts the board fetchers can serve are matched. EU-hosted Lever
+(``jobs.eu.lever.co``) has its own API host, so its source carries
+``region="eu"``. EU-hosted Greenhouse (``*.eu.greenhouse.io``) is served by
+the default Greenhouse API and needs no region.
 """
 
 import re
+from typing import Literal
 from urllib.parse import parse_qs, urlsplit
 
 from .sources import Board, BoardSource
@@ -17,18 +19,24 @@ from .sources import Board, BoardSource
 # Board slugs in the wild: letters, digits, dot, dash, underscore.
 _SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
-# host -> (board, path segments before the slug). Hosts are lowercase.
-_SIGNATURES: dict[str, tuple[Board, tuple[str, ...]]] = {
-    "boards.greenhouse.io": ("greenhouse", ()),
-    "job-boards.greenhouse.io": ("greenhouse", ()),
-    "boards-api.greenhouse.io": ("greenhouse", ("v1", "boards")),
-    "jobs.lever.co": ("lever", ()),
-    "api.lever.co": ("lever", ("v0", "postings")),
-    "jobs.ashbyhq.com": ("ashby", ()),
-    "api.ashbyhq.com": ("ashby", ("posting-api", "job-board")),
-    "jobs.smartrecruiters.com": ("smartrecruiters", ()),
-    "careers.smartrecruiters.com": ("smartrecruiters", ()),
-    "api.smartrecruiters.com": ("smartrecruiters", ("v1", "companies")),
+Region = Literal["eu"] | None
+
+# host -> (board, path segments before the slug, region). Hosts are lowercase.
+_SIGNATURES: dict[str, tuple[Board, tuple[str, ...], Region]] = {
+    "boards.greenhouse.io": ("greenhouse", (), None),
+    "job-boards.greenhouse.io": ("greenhouse", (), None),
+    "boards.eu.greenhouse.io": ("greenhouse", (), None),
+    "job-boards.eu.greenhouse.io": ("greenhouse", (), None),
+    "boards-api.greenhouse.io": ("greenhouse", ("v1", "boards"), None),
+    "jobs.lever.co": ("lever", (), None),
+    "api.lever.co": ("lever", ("v0", "postings"), None),
+    "jobs.eu.lever.co": ("lever", (), "eu"),
+    "api.eu.lever.co": ("lever", ("v0", "postings"), "eu"),
+    "jobs.ashbyhq.com": ("ashby", (), None),
+    "api.ashbyhq.com": ("ashby", ("posting-api", "job-board"), None),
+    "jobs.smartrecruiters.com": ("smartrecruiters", (), None),
+    "careers.smartrecruiters.com": ("smartrecruiters", (), None),
+    "api.smartrecruiters.com": ("smartrecruiters", ("v1", "companies"), None),
 }
 
 # Greenhouse's embeddable board names the company in ``?for=``.
@@ -55,7 +63,7 @@ def match_board(url: str) -> BoardSource | None:
     host = host.removeprefix("www.")
     if host not in _SIGNATURES:
         return None
-    board, prefix = _SIGNATURES[host]
+    board, prefix, region = _SIGNATURES[host]
     segments = [s for s in parts.path.split("/") if s]
 
     if board == "greenhouse" and tuple(segments[:2]) == _GREENHOUSE_EMBED:
@@ -68,4 +76,4 @@ def match_board(url: str) -> BoardSource | None:
 
     if slug is None or not _SLUG.match(slug):
         return None
-    return BoardSource(kind="board", board=board, board_id=slug)
+    return BoardSource(kind="board", board=board, board_id=slug, region=region)

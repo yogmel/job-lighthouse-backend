@@ -22,6 +22,19 @@ from job_lighthouse_backend.companies.ats import match_board, normalize_url
             "greenhouse",
             "stripe",
         ),
+        # Greenhouse, EU-hosted: same API as the rest, so no region (BE-052).
+        ("https://job-boards.eu.greenhouse.io/wallapop", "greenhouse", "wallapop"),
+        (
+            "https://job-boards.eu.greenhouse.io/wallapop/jobs/4928727101",
+            "greenhouse",
+            "wallapop",
+        ),
+        ("https://boards.eu.greenhouse.io/wallapop", "greenhouse", "wallapop"),
+        (
+            "https://job-boards.eu.greenhouse.io/embed/job_board?for=wallapop",
+            "greenhouse",
+            "wallapop",
+        ),
         # Lever
         ("https://jobs.lever.co/netflix", "lever", "netflix"),
         ("https://jobs.lever.co/netflix/abc-123/apply", "lever", "netflix"),
@@ -67,6 +80,27 @@ def test_known_board(url, board, board_id):
 @pytest.mark.parametrize(
     "url",
     [
+        "https://jobs.eu.lever.co/ovoko",
+        "https://jobs.eu.lever.co/ovoko/abc-123/apply",
+        "https://api.eu.lever.co/v0/postings/ovoko?mode=json",
+        "HTTPS://Jobs.EU.Lever.co/ovoko",
+    ],
+)
+def test_eu_lever_board_records_region(url):
+    # BE-052: EU Lever boards answer only on api.eu.lever.co.
+    source = match_board(url)
+    assert source is not None
+    assert source.model_dump() == {
+        "kind": "board",
+        "board": "lever",
+        "board_id": "ovoko",
+        "region": "eu",
+    }
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
         "",
         "   ",
         "not a url",
@@ -80,9 +114,8 @@ def test_known_board(url, board, board_id):
         "https://boards.greenhouse.io/embed/job_board?for=",
         "https://api.lever.co/v0/",
         "https://api.ashbyhq.com/other/openai",
-        # EU hosts use other API hosts: not served by the board fetchers.
-        "https://jobs.eu.lever.co/acme",
-        "https://job-boards.eu.greenhouse.io/acme",
+        "https://jobs.eu.lever.co/",
+        "https://evil.example/jobs.eu.lever.co/acme",
         # Slug with characters no board uses.
         "https://jobs.lever.co/%2e%2e",
         "https://jobs.lever.co/-dash-first",

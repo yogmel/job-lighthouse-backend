@@ -285,10 +285,12 @@ class _FakeRoute:
 
 
 class _FakePage:
-    def __init__(self, status, wait_error=None, goto_error=None):
+    def __init__(self, status, wait_error=None, goto_error=None, idle_error=None):
         self.status = status
         self.wait_error = wait_error
         self.goto_error = goto_error
+        self.idle_error = idle_error
+        self.idle_waits: list[tuple[str, int]] = []
         self.url = "https://acme.example/careers#loaded"
         self.handler: Callable[[_FakeRoute], None] = lambda route: None
 
@@ -303,6 +305,11 @@ class _FakePage:
     def wait_for_selector(self, selector, timeout):
         if self.wait_error:
             raise self.wait_error
+
+    def wait_for_load_state(self, state, timeout):
+        self.idle_waits.append((state, timeout))
+        if self.idle_error:
+            raise self.idle_error
 
     def content(self):
         return PAGE
@@ -426,10 +433,26 @@ def test_undecodable_page_is_failure(monkeypatch):
 
 
 def test_render_page_without_wait_for(monkeypatch):
-    # Selector discovery renders before it knows any selector.
+    # Selector discovery renders before it knows any selector: it waits for
+    # the network to settle instead (BE-051).
     page = _FakePage(200, wait_error=AssertionError("must not wait"))
     _fake_playwright(monkeypatch, page)
     assert scraper.render_page(CAREERS) == (page.url, PAGE)
+    assert page.idle_waits == [("networkidle", scraper.SETTLE_WAIT_MS)]
+
+
+def test_render_page_never_idle_still_parses(monkeypatch):
+    # A page that keeps polling never goes idle; take what has rendered.
+    page = _FakePage(200, idle_error=scraper.PlaywrightError("timeout"))
+    _fake_playwright(monkeypatch, page)
+    assert scraper.render_page(CAREERS) == (page.url, PAGE)
+
+
+def test_scheduled_render_waits_on_selector_not_idle(monkeypatch):
+    page = _FakePage(200, idle_error=AssertionError("must not wait for idle"))
+    _fake_playwright(monkeypatch, page)
+    assert fetch_scraper(_source("dynamic")) == EXPECTED
+    assert page.idle_waits == []
 
 
 def test_fetch_static_page_uses_own_session(monkeypatch):
