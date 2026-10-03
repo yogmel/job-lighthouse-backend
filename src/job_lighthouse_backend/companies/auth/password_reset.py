@@ -149,9 +149,9 @@ async def send_reset(
         await mailer(build_reset_email(to, link))
     except Exception as exc:
         # Type only: the message may echo the address.
-        logger.warning("Password reset email failed: %s", type(exc).__name__)
+        logger.warning("Reset email failed: %s", type(exc).__name__)
         return
-    logger.info("Password reset email sent for user %s", user_id)
+    logger.info("Reset email sent for user %s", user_id)
 
 
 @router.post("/request", status_code=status.HTTP_202_ACCEPTED)
@@ -165,7 +165,7 @@ async def request_reset(
     """Email a reset link if the account exists. Same response either way."""
     settings: Settings = request.app.state.settings
     if mailer is None or not settings.password_reset_url:
-        logger.warning("Password reset requested but email isn't configured")
+        logger.warning("Reset requested but email isn't configured")
         return
     # async route: runs on the event loop, where each hit is atomic.
     if limiter.hit(body.email.lower()) is not None:
