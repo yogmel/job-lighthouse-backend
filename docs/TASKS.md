@@ -761,7 +761,7 @@ Confirm screen showing the scored sample; on confirm, success banner.
 Found while building BE-033 – BE-036 (#106, #107). The dynamic fallback
 also needs PROJ-009 (Chromium in the image).
 
-### BE-048 · POST /companies/detect can outlive the Nginx proxy timeout
+### ~~BE-048 · POST /companies/detect can outlive the Nginx proxy timeout~~
 
 **Target:** backend **Version:** v0.8
 
