@@ -932,7 +932,7 @@ no handler yet.
 
 ## v0.11 — Account completeness
 
-### BE-041 · POST /auth/password-reset/request
+### ~~BE-041 · POST /auth/password-reset/request~~
 
 **Target:** backend **Version:** v0.11
 
@@ -943,7 +943,7 @@ Issue a `PasswordResetToken`, email the reset link.
 - Unknown email still returns a generic success response (no enumeration)
 - Token stored hashed, never the raw value
 
-### BE-042 · POST /auth/password-reset/confirm
+### ~~BE-042 · POST /auth/password-reset/confirm~~
 
 **Target:** backend **Version:** v0.11
 

@@ -141,6 +141,11 @@ Email needs these (from v0.6):
 - `EMAIL_FROM`: required when `RESEND_API_KEY` is set, or the services
   won't start. A sender on a domain verified in Resend, e.g.
   `Job Lighthouse <digest@example.com>`.
+- `PASSWORD_RESET_URL`: optional, Companies only (from v0.11). The
+  frontend page that sets a new password, e.g.
+  `https://job-lighthouse.vercel.app/reset-password`. Reset emails link to
+  it with `?token=...`. Without it (or without `RESEND_API_KEY`),
+  `POST /auth/password-reset/request` still answers 202 but sends nothing.
 
 Scheduling needs nothing (from v0.7). The Job Runner ticks every minute and
 starts the runs due by each user's `Config.cron` (UTC).

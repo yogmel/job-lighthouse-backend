@@ -37,6 +37,9 @@ class Settings:
     resend_api_key: str | None = None
     # Sender, e.g. "Job Lighthouse <digest@example.com>". Required with the key.
     email_from: str | None = None
+    # Frontend page that sets a new password; reset emails link to it with
+    # ``?token=...`` (Companies). Unset: no reset email is sent.
+    password_reset_url: str | None = None
     # Job Runner tick loop. Off in tests, so TestClient doesn't start runs.
     scheduler_enabled: bool = True
     # POST /companies/detect calls allowed per user per hour (Companies).
@@ -70,6 +73,7 @@ class Settings:
             openai_model=os.environ.get("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL,
             resend_api_key=resend_api_key,
             email_from=email_from,
+            password_reset_url=os.environ.get("PASSWORD_RESET_URL") or None,
             scheduler_enabled=scheduler != "false",
             detect_limit_per_hour=detect_limit,
         )
