@@ -790,7 +790,7 @@ user can call it.
 - The limit is set from an env var with a sane default
 - No Redis or other new service (see CLAUDE.md out-of-scope list)
 
-### BE-050 · Detect boards embedded on a company's own careers page
+### ~~BE-050 · Detect boards embedded on a company's own careers page~~
 
 **Target:** backend **Version:** v0.8
 
