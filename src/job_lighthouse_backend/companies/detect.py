@@ -14,6 +14,11 @@ the returned ``source`` unchanged to ``POST /companies``.
 A URL that can't be fetched at all (or a matched board that won't answer)
 is a **422**: the user likely pasted a wrong URL, and a custom handler
 wouldn't fix that.
+
+Everything runs inside the request, so it has a time budget (BE-048) that
+ends before Nginx's 60s ``proxy_read_timeout``. Out of time while finding
+the source: ``needs_custom``. Out of time while scoring: the sample is
+returned unscored.
 """
 
 import asyncio
@@ -60,6 +65,12 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 
 # Openings scored for the confirm screen. Bounds LLM cost and latency.
 SAMPLE_SIZE = 5
+
+# Seconds one detect may take, under Nginx's 60s default with margin. The
+# worst case without it: static GET (25s), LLM (60s), render (30s load +
+# 10s settle), LLM (60s), scoring (60s).
+DETECT_BUDGET_SECONDS = 50.0
+TIMED_OUT = "detection took too long"
 
 
 class DetectIn(BaseModel):
@@ -160,7 +171,15 @@ async def detect_company(
     await session.close()
 
     url = normalize_url(body.url)
-    found = await _find(url, fetch, _static_once(load), proposer)
+    # Running out of time cancels the awaits, but not the work already in a
+    # thread: a fetch or browser render runs on to its own timeout.
+    deadline = asyncio.get_running_loop().time() + DETECT_BUDGET_SECONDS
+    try:
+        async with asyncio.timeout_at(deadline):
+            found = await _find(url, fetch, _static_once(load), proposer)
+    except TimeoutError:
+        logger.warning("Detect ran out of time finding a source")
+        return _needs_custom(TIMED_OUT)
     if isinstance(found, str):
         return _needs_custom(found)
     source, openings = found
@@ -181,7 +200,11 @@ async def detect_company(
         postings = [
             Posting(o.title, company, o.location, o.description) for o in sample
         ]
-        matches = await score_postings(postings, profile.text, scorer)
+        try:
+            async with asyncio.timeout_at(deadline):
+                matches = await score_postings(postings, profile.text, scorer)
+        except TimeoutError:
+            logger.warning("Detect ran out of time scoring the sample")
 
     return DetectOut(
         status="detected",

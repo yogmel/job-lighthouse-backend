@@ -1,5 +1,6 @@
 """BE-035: POST /companies/detect."""
 
+import asyncio
 from collections.abc import Iterator
 from types import SimpleNamespace
 
@@ -43,6 +44,9 @@ class Fakes:
         self.loaded: list[tuple[str, str]] = []
         self.proposed: list[str] = []
         self.scored: list[tuple[str, Posting]] = []
+        # Seconds the LLM stand-ins take.
+        self.propose_delay = 0.0
+        self.score_delay = 0.0
 
     def fetch(self, source):
         self.fetched.append(source)
@@ -58,10 +62,12 @@ class Fakes:
 
     async def propose(self, url: str, html: str) -> Proposal | None:
         self.proposed.append(url)
+        await asyncio.sleep(self.propose_delay)
         return self.proposal
 
     async def score(self, profile: str, posting: Posting) -> Match:
         self.scored.append((profile, posting))
+        await asyncio.sleep(self.score_delay)
         if "fail" in posting.title:
             raise RuntimeError("LLM down")
         return Match(score=len(posting.title), description=f"why {posting.title}")
@@ -398,6 +404,39 @@ def test_only_own_profile_is_used(companies_client, make_user, auth_header, fake
 
     _detect(companies_client, auth_header(me["id"]), "jobs.lever.co/acme")
     assert fakes.scored == []
+
+
+@needs_db
+def test_slow_discovery_needs_custom_within_budget(
+    companies_client, make_user, auth_header, fakes, monkeypatch
+):
+    # BE-048: answer before the proxy times out instead of a 504.
+    monkeypatch.setattr(detect, "DETECT_BUDGET_SECONDS", 0.2)
+    user = make_user()
+    fakes.propose_delay = 5
+
+    body = _detect(companies_client, auth_header(user["id"]), "https://acme.example")
+    assert body["status"] == "needs_custom"
+    assert body["reason"] == "detection took too long"
+    assert fakes.proposed == ["https://acme.example"]
+
+
+@needs_db
+def test_slow_scoring_returns_sample_unscored(
+    companies_client, make_user, auth_header, fakes, db, monkeypatch
+):
+    monkeypatch.setattr(detect, "DETECT_BUDGET_SECONDS", 0.2)
+    user = make_user()
+    _set_profile(db, user["id"])
+    fakes.score_delay = 5
+    fakes.board_result = [Opening("Engineer", "https://jobs.example/1")]
+
+    body = _detect(companies_client, auth_header(user["id"]), "jobs.lever.co/acme")
+    assert body["status"] == "detected"
+    assert body["jobs_found"] == 1
+    assert body["sample"][0]["title"] == "Engineer"
+    assert body["sample"][0]["match_score"] is None
+    assert len(fakes.scored) == 1
 
 
 def _request(**settings) -> SimpleNamespace:

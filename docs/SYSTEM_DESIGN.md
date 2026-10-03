@@ -393,6 +393,10 @@ type DetectOut = {
 
 - `needs_custom` is a `200`: the page loaded but no board matched and no
   selectors scraped it (or `OPENAI_API_KEY` is unset).
+- Detect has a **50s budget** inside the request, so it answers before
+  Nginx's 60s proxy timeout. Out of time while finding the source:
+  `needs_custom` with reason `"detection took too long"` (worth a retry).
+  Out of time while scoring: `detected` with the sample unscored.
 - `422 { detail }`: the URL can't be loaded at all, or a matched board's
   API fails (e.g. a wrong slug).
 - **Confirm** = `POST /companies` with the returned `source` unchanged. No
