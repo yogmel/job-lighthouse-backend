@@ -278,7 +278,60 @@ def test_without_llm_key_unknown_url_needs_custom(
     body = _detect(companies_client, auth_header(user["id"]), "https://acme.example")
     assert body["status"] == "needs_custom"
     assert body["reason"] == "selector discovery is not configured"
-    assert fakes.loaded == []
+    # Only the embed check's static load (BE-050).
+    assert fakes.loaded == [("https://acme.example", "static")]
+
+
+EMBED = '<script src="https://boards.greenhouse.io/embed/job_board/js?for=acme">'
+EMBED_PAGE = f"<html><body><h1>Careers</h1>{EMBED}</script></body></html>"
+
+
+@needs_db
+def test_embedded_board_is_detected_without_llm(
+    companies_client, make_user, auth_header, fakes, db
+):
+    # BE-050: works with no LLM key, and never calls one.
+    user = make_user()
+    _set_profile(db, user["id"])
+    app.dependency_overrides[get_proposer] = lambda: None
+    fakes.page = ("https://acme.example/careers", EMBED_PAGE)
+    fakes.board_result = [Opening("Engineer", "https://jobs.example/1")]
+
+    body = _detect(companies_client, auth_header(user["id"]), "acme.example/careers")
+    assert body["status"] == "detected"
+    assert body["method"] == "board"
+    assert body["source"] == {
+        "kind": "board",
+        "board": "greenhouse",
+        "board_id": "acme",
+    }
+    assert body["jobs_found"] == 1
+    assert fakes.loaded == [("https://acme.example/careers", "static")]
+    assert [s.board_id for s in fakes.fetched] == ["acme"]
+    assert fakes.proposed == []
+    # Scored under the board slug, like a pasted board URL.
+    assert [p.company for _, p in fakes.scored] == ["acme"]
+
+
+@needs_db
+def test_failing_embedded_board_falls_through_to_discovery(
+    companies_client, make_user, auth_header, fakes
+):
+    # A stale widget on a working page is not a bad URL.
+    user = make_user()
+    fakes.page = (
+        "https://acme.example/",
+        PAGE.replace("<ul>", f"{EMBED}</script><ul>"),
+    )
+    fakes.board_result = FetchError("HTTP 404")
+
+    body = _detect(companies_client, auth_header(user["id"]), "https://acme.example")
+    assert body["status"] == "detected"
+    assert body["method"] == "selectors"
+    assert body["jobs_found"] == 2
+    assert len(fakes.fetched) == 1
+    # The static page is fetched once and shared with discovery.
+    assert fakes.loaded == [("https://acme.example", "static")]
 
 
 @needs_db

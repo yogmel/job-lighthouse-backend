@@ -1,8 +1,11 @@
 """POST /companies/detect: turn a pasted careers URL into a draft ``Source``.
 
 1. Known board URL (BE-033): verify with a live fetch of the board. No LLM.
-2. Otherwise, LLM selector discovery (BE-034).
-3. Neither works: ``needs_custom`` (a 200, not an error).
+2. A known board embedded on or linked from the page (BE-050): same, but a
+   board that won't answer falls through to step 3, since the page itself
+   loaded fine.
+3. Otherwise, LLM selector discovery (BE-034).
+4. None works: ``needs_custom`` (a 200, not an error).
 
 The response carries a scored sample of the openings found, scored the same
 way a run scores new jobs. Nothing is stored: the user confirms by sending
@@ -36,14 +39,18 @@ from job_lighthouse_backend.job_runner.scoring import (
 )
 
 from .ats import match_board, normalize_url
+from .embeds import match_embedded_board
 from .selector_discovery import (
     PageLoader,
     Proposer,
+    Strategy,
     create_openai_proposer,
     discover_selectors,
     load_page,
 )
 from .sources import BoardSource, ManualSource
+
+Found = tuple[ManualSource, list[Opening]]
 
 logger = logging.getLogger(__name__)
 
@@ -153,25 +160,15 @@ async def detect_company(
     await session.close()
 
     url = normalize_url(body.url)
-    source: ManualSource
+    found = await _find(url, fetch, _static_once(load), proposer)
+    if isinstance(found, str):
+        return _needs_custom(found)
+    source, openings = found
     method: Literal["board", "selectors"]
-    board = match_board(url)
-    if board is not None:
-        source, method = board, "board"
-        company = board.board_id
-        openings = await _fetch_board(board, fetch)
+    if isinstance(source, BoardSource):
+        method, company = "board", source.board_id
     else:
-        if proposer is None:
-            return _needs_custom("selector discovery is not configured")
-        try:
-            found = await discover_selectors(url, proposer, load)
-        except FetchError as exc:
-            raise _unprocessable(f"page could not be loaded: {exc}") from None
-        if found.source is None:
-            return _needs_custom("no job list could be found on the page")
-        source, method = found.source, "selectors"
-        company = urlsplit(url).hostname or ""
-        openings = found.openings
+        method, company = "selectors", urlsplit(url).hostname or ""
 
     # Same URL = same job; keep the first.
     unique: dict[str, Opening] = {}
@@ -202,6 +199,68 @@ async def detect_company(
             for o, m in zip(sample, matches, strict=True)
         ],
     )
+
+
+async def _find(
+    url: str, fetch: Fetcher, load: PageLoader, proposer: Proposer | None
+) -> Found | str:
+    """A source for ``url`` and its openings, or why it needs custom handling."""
+    board = match_board(url)
+    if board is not None:
+        return board, await _fetch_board(board, fetch)
+    embedded = await _embedded_board(url, fetch, load)
+    if embedded is not None:
+        return embedded
+    if proposer is None:
+        return "selector discovery is not configured"
+    try:
+        found = await discover_selectors(url, proposer, load)
+    except FetchError as exc:
+        raise _unprocessable(f"page could not be loaded: {exc}") from None
+    if found.source is None:
+        return "no job list could be found on the page"
+    return found.source, found.openings
+
+
+async def _embedded_board(url: str, fetch: Fetcher, load: PageLoader) -> Found | None:
+    """The board the page embeds or links to, if it answers. No LLM."""
+    try:
+        final_url, html = await asyncio.to_thread(load, url, "static")
+    except FetchError:
+        # Discovery reports it, and may still load the page in a browser.
+        return None
+    board = match_embedded_board(html, final_url)
+    if board is None:
+        return None
+    try:
+        return board, await asyncio.to_thread(fetch, board)
+    except Exception as exc:
+        # E.g. a stale link to an old board. The page loaded, so try it.
+        logger.info("Embedded %s board failed: %s", board.board, type(exc).__name__)
+        return None
+
+
+def _static_once(load: PageLoader) -> PageLoader:
+    """``load``, but the static page is fetched at most once per URL.
+
+    The embed check and selector discovery both read it.
+    """
+    pages: dict[str, tuple[str, str] | FetchError] = {}
+
+    def cached(url: str, strategy: Strategy) -> tuple[str, str]:
+        if strategy != "static":
+            return load(url, strategy)
+        if url not in pages:
+            try:
+                pages[url] = load(url, strategy)
+            except FetchError as exc:
+                pages[url] = exc
+        page = pages[url]
+        if isinstance(page, FetchError):
+            raise page
+        return page
+
+    return cached
 
 
 def _needs_custom(reason: str) -> DetectOut:

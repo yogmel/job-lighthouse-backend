@@ -610,6 +610,10 @@ pattern (`PasswordResetToken.expires_at`).
 2. **Deterministic ATS detection first** — match the URL/host against known
    signatures for Greenhouse, Lever, Ashby, SmartRecruiters. If matched: fill
    `board` + `board_id`, verify with a live fetch, done — no LLM call.
+   Else fetch the page and look for a known board it embeds (script or
+   iframe `src`) or links to; the same signatures decide, and widgets win
+   over links. Two different boards = ambiguous, ignored. A matched board
+   that won't answer falls through to step 3: the page itself loaded fine.
 3. If no known board matches: dispatch the **LLM selector-discovery agent**
    against the page to propose `Selectors`
 4. If the agent can't produce a working scrape either: surface the company as
