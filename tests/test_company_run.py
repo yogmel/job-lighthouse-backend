@@ -6,8 +6,12 @@ import psycopg
 import pytest
 from sqlalchemy import select
 
-from job_lighthouse_backend.companies.sources import BoardSource, ScraperSource
-from job_lighthouse_backend.job_runner import company_run
+from job_lighthouse_backend.companies.sources import (
+    BoardSource,
+    CustomSource,
+    ScraperSource,
+)
+from job_lighthouse_backend.job_runner import company_run, handlers
 from job_lighthouse_backend.job_runner.company_run import (
     CompanyOutcome,
     fetch_openings,
@@ -131,15 +135,81 @@ def test_scraper_empty_is_ok_with_zero(db, make_user, make_company):
     assert _jobs(db, company_id) == {url: True}
 
 
+@pytest.fixture
+def use_handler(monkeypatch):
+    """Register ``fn`` as the handler ``CUSTOM_SOURCE`` names."""
+
+    def _use(fn):
+        monkeypatch.setitem(handlers.HANDLERS, CUSTOM_SOURCE["handler"], fn)
+
+    return _use
+
+
 @needs_db
-def test_custom_is_skipped_without_fetching(db, make_user, make_company):
+def test_custom_without_handler_is_skipped(db, make_user, make_company):
     user = make_user()
     company_id = make_company(user["id"], source=CUSTOM_SOURCE)
+    url = _add_job(db, user["id"], company_id)
     run_id = _open_run(db, user["id"])
 
-    [outcome] = _process(run_id, [company_id], _raises(AssertionError("fetched")))
+    [outcome] = _process(run_id, [company_id], fetch_openings)
     assert outcome.status == "skipped"
-    assert _results(db, run_id)[company_id][:2] == ("skipped", 0)
+    assert _results(db, run_id) == {
+        company_id: ("skipped", 0, "no handler named 'acme' yet")
+    }
+    assert _jobs(db, company_id) == {url: True}
+
+
+@needs_db
+def test_custom_handler_success_inserts_and_closes(
+    db, make_user, make_company, use_handler
+):
+    user = make_user()
+    company_id = make_company(user["id"], source=CUSTOM_SOURCE)
+    gone = _add_job(db, user["id"], company_id)
+    new_url = _url()
+    run_id = _open_run(db, user["id"])
+    use_handler(lambda: [Opening("A", new_url)])
+
+    [outcome] = _process(run_id, [company_id], fetch_openings)
+    assert outcome.status == "ok"
+    assert _results(db, run_id) == {company_id: ("ok", 1, None)}
+    assert _jobs(db, company_id) == {gone: False, new_url: True}
+
+
+@needs_db
+def test_custom_handler_empty_success_closes_all(
+    db, make_user, make_company, use_handler
+):
+    user = make_user()
+    company_id = make_company(user["id"], source=CUSTOM_SOURCE)
+    gone = _add_job(db, user["id"], company_id)
+    run_id = _open_run(db, user["id"])
+    use_handler(lambda: [])
+
+    _process(run_id, [company_id], fetch_openings)
+    assert _results(db, run_id) == {company_id: ("ok", 0, None)}
+    assert _jobs(db, company_id) == {gone: False}
+
+
+@needs_db
+def test_custom_handler_failure_closes_nothing(
+    db, make_user, make_company, use_handler
+):
+    user = make_user()
+    company_id = make_company(user["id"], source=CUSTOM_SOURCE)
+    url = _add_job(db, user["id"], company_id)
+    run_id = _open_run(db, user["id"])
+
+    def broken():
+        raise FetchError("page changed")
+
+    use_handler(broken)
+
+    [outcome] = _process(run_id, [company_id], fetch_openings)
+    assert outcome == CompanyOutcome("failed", error="page changed")
+    assert _results(db, run_id) == {company_id: ("failed", 0, "page changed")}
+    assert _jobs(db, company_id) == {url: True}
 
 
 @needs_db
@@ -198,6 +268,19 @@ def test_fetch_openings_dispatches_by_kind(monkeypatch):
     monkeypatch.setattr(company_run, "fetch_scraper", lambda s: [Opening("S", "s")])
     assert fetch_openings(board) == [Opening("B", "b")]
     assert fetch_openings(scraper) == [Opening("S", "s")]
+
+
+def test_fetch_openings_runs_the_named_handler(use_handler):
+    use_handler(lambda: [Opening("C", "c")])
+    assert fetch_openings(CustomSource.model_validate(CUSTOM_SOURCE)) == [
+        Opening("C", "c")
+    ]
+
+
+def test_fetch_custom_without_handler_raises():
+    source = CustomSource(kind="custom", handler="nobody")
+    with pytest.raises(handlers.NoHandlerError, match="'nobody'"):
+        handlers.fetch_custom(source, {})
 
 
 @pytest.mark.parametrize("status", ["ok", "failed", "skipped"])

@@ -324,6 +324,12 @@ type Source =
   (bespoke `scrape_google()`, `scrape_shopify()`, etc. dispatched by a type
   string) — the schema just makes that pattern first-class instead of a
   hardcoded `if/elif` chain.
+- Handlers live in `job_runner/handlers.py`, in a registry keyed by
+  `handler`. A handler returns its openings (empty included) for success, or
+  raises `FetchError` for failure. `POST`/`PUT /companies` accept any
+  non-empty `handler` name; until code ships under that name, runs and
+  `POST /companies/{id}/test` report the company `skipped`
+  (`"no handler named '<name>' yet"`), and its jobs are left alone.
 
 Stored as a single `jsonb` column; the union is validated in the app layer.
 
