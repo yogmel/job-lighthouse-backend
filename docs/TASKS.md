@@ -820,7 +820,7 @@ back `needs_custom`.
   bounded by the existing render timeout)
 - Scheduled `dynamic` scrapes keep waiting on `selectors.job` as today
 
-### BE-052 · Support EU-hosted Greenhouse and Lever boards
+### ~~BE-052 · Support EU-hosted Greenhouse and Lever boards~~
 
 **Target:** backend **Version:** v0.8
 
