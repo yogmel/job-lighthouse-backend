@@ -2,7 +2,8 @@
 
 Fetch → insert new jobs (BE-022) → close/reopen (BE-023) → result row.
 
-- ``custom`` sources are ``skipped`` until handlers ship (v0.10).
+- A ``custom`` source runs its handler (see ``handlers``). One with no
+  handler shipped yet is ``skipped``.
 - A failed fetch is ``failed`` and touches no jobs.
 - A DB error while syncing rolls back that company's job changes (savepoint)
   and is ``failed``; the result row is still written.
@@ -26,6 +27,7 @@ from job_lighthouse_backend.companies.sources import (
 )
 
 from .boards import fetch_board
+from .handlers import NoHandlerError, fetch_custom
 from .models import Company, RunCompanyResult
 from .openings import FetchError, Opening
 from .scraper import fetch_scraper
@@ -36,16 +38,18 @@ logger = logging.getLogger(__name__)
 ResultStatus = Literal["ok", "failed", "skipped"]
 
 # Synchronous; run in a worker thread.
-Fetcher = Callable[[BoardSource | ScraperSource], list[Opening]]
+Fetcher = Callable[[Source], list[Opening]]
 
 _source_adapter: TypeAdapter[Source] = TypeAdapter(Source)
 
 
-def fetch_openings(source: BoardSource | ScraperSource) -> list[Opening]:
+def fetch_openings(source: Source) -> list[Opening]:
     """Dispatch to the fetcher for ``source.kind``."""
     if isinstance(source, BoardSource):
         return fetch_board(source)
-    return fetch_scraper(source)
+    if isinstance(source, ScraperSource):
+        return fetch_scraper(source)
+    return fetch_custom(source)
 
 
 @dataclass(frozen=True)
@@ -94,11 +98,11 @@ async def fetch_company(
         source = _source_adapter.validate_python(company.source)
     except ValidationError:
         return CompanyOutcome("failed", error="stored source is invalid")
-    if not isinstance(source, BoardSource | ScraperSource):
-        return CompanyOutcome("skipped", error="custom handlers are not supported yet")
 
     try:
         return await asyncio.to_thread(fetch, source)
+    except NoHandlerError as exc:
+        return CompanyOutcome("skipped", error=str(exc))
     except FetchError as exc:
         return CompanyOutcome("failed", error=str(exc) or "fetch failed")
     except Exception as exc:

@@ -33,6 +33,7 @@ JWT_SECRET=change-me
 # Transactional email (Resend). Without a key, no email is sent.
 # RESEND_API_KEY=...
 # EMAIL_FROM=Job Lighthouse <digest@example.com>   # required with the key
+# PASSWORD_RESET_URL=http://localhost:3000/reset-password  # reset emails link here
 
 # Job Runner cron tick loop. Default true; false stops scheduled runs.
 # SCHEDULER_ENABLED=true
