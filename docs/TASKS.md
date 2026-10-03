@@ -954,7 +954,7 @@ Verify token, set new password, mark token used.
 - Expired or already-used token is rejected
 - Token can't be reused after a successful confirm
 
-### BE-043 · GET /account/export
+### ~~BE-043 · GET /account/export~~
 
 **Target:** backend **Version:** v0.11
 
