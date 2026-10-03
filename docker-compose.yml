@@ -17,6 +17,8 @@ x-app: &app
     # Match scoring (Job Runner). Unset: new jobs are stored unscored.
     OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     OPENAI_MODEL: ${OPENAI_MODEL:-}
+    # POST /companies/detect calls per user per hour (Companies). Unset: 20.
+    DETECT_LIMIT_PER_HOUR: ${DETECT_LIMIT_PER_HOUR:-}
     # Transactional email (Resend). Unset: no email is sent.
     RESEND_API_KEY: ${RESEND_API_KEY:-}
     EMAIL_FROM: ${EMAIL_FROM:-}

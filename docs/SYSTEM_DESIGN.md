@@ -393,6 +393,9 @@ type DetectOut = {
 
 - `needs_custom` is a `200`: the page loaded but no board matched and no
   selectors scraped it (or `OPENAI_API_KEY` is unset).
+- `429 { detail }` + `Retry-After` (seconds): over the per-user limit,
+  `DETECT_LIMIT_PER_HOUR` calls per hour (default 20). Every call counts,
+  failed ones too. Counted in memory in the one Companies process: no Redis.
 - Detect has a **50s budget** inside the request, so it answers before
   Nginx's 60s proxy timeout. Out of time while finding the source:
   `needs_custom` with reason `"detection took too long"` (worth a retry).

@@ -11,6 +11,10 @@ The response carries a scored sample of the openings found, scored the same
 way a run scores new jobs. Nothing is stored: the user confirms by sending
 the returned ``source`` unchanged to ``POST /companies``.
 
+Each user gets ``DETECT_LIMIT_PER_HOUR`` calls per hour (BE-049); over it is
+a **429** with ``Retry-After``. Every call counts, failed ones too: they
+cost the same fetches and LLM calls.
+
 A URL that can't be fetched at all (or a matched board that won't answer)
 is a **422**: the user likely pasted a wrong URL, and a custom handler
 wouldn't fix that.
@@ -23,6 +27,7 @@ returned unscored.
 
 import asyncio
 import logging
+import math
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
@@ -45,6 +50,7 @@ from job_lighthouse_backend.job_runner.scoring import (
 
 from .ats import match_board, normalize_url
 from .embeds import match_embedded_board
+from .rate_limit import RateLimiter
 from .selector_discovery import (
     PageLoader,
     Proposer,
@@ -131,6 +137,31 @@ def get_scorer(request: Request) -> Scorer | None:
     return scorer_for(request.app.state)
 
 
+async def get_detect_limiter(request: Request) -> RateLimiter:
+    """The per-user detect limiter. Built once per app."""
+    state = request.app.state
+    if getattr(state, "detect_limiter", None) is None:
+        state.detect_limiter = RateLimiter(
+            state.settings.detect_limit_per_hour, window_seconds=60 * 60
+        )
+    return state.detect_limiter
+
+
+async def check_detect_limit(
+    user_id: CurrentUserId,
+    limiter: Annotated[RateLimiter, Depends(get_detect_limiter)],
+) -> None:
+    # Async on purpose: FastAPI runs sync dependencies in a threadpool, and
+    # the limiter isn't thread-safe. On the event loop each hit is atomic.
+    retry_after = limiter.hit(user_id)
+    if retry_after is not None:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="too many detect requests, try again later",
+            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
+        )
+
+
 def _unprocessable(message: str) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, detail=message)
 
@@ -150,10 +181,14 @@ async def _fetch_board(source: BoardSource, fetch: Fetcher) -> list[Opening]:
 @router.post(
     "/detect",
     response_model=DetectOut,
+    dependencies=[Depends(check_detect_limit)],
     responses={
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "The URL or its board can't be fetched"
-        }
+        },
+        status.HTTP_429_TOO_MANY_REQUESTS: {
+            "description": "Over the per-user hourly detect limit"
+        },
     },
 )
 async def detect_company(

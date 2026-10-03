@@ -10,12 +10,14 @@ from job_lighthouse_backend.common.settings import Settings
 from job_lighthouse_backend.companies import detect
 from job_lighthouse_backend.companies.detect import (
     SAMPLE_SIZE,
+    get_detect_limiter,
     get_fetcher,
     get_page_loader,
     get_proposer,
     get_scorer,
 )
 from job_lighthouse_backend.companies.main import app
+from job_lighthouse_backend.companies.rate_limit import RateLimiter
 from job_lighthouse_backend.companies.selector_discovery import Proposal
 from job_lighthouse_backend.job_runner.openings import FetchError, Opening
 from job_lighthouse_backend.job_runner.scoring import Match, Posting
@@ -44,6 +46,9 @@ class Fakes:
         self.loaded: list[tuple[str, str]] = []
         self.proposed: list[str] = []
         self.scored: list[tuple[str, Posting]] = []
+        # A fresh limit per test: one built on the module-level app would
+        # count every test's calls.
+        self.limiter = RateLimiter(20, window_seconds=3600)
         # Seconds the LLM stand-ins take.
         self.propose_delay = 0.0
         self.score_delay = 0.0
@@ -80,6 +85,7 @@ def fakes() -> Iterator[Fakes]:
     app.dependency_overrides[get_page_loader] = lambda: f.load
     app.dependency_overrides[get_proposer] = lambda: f.propose
     app.dependency_overrides[get_scorer] = lambda: f.score
+    app.dependency_overrides[get_detect_limiter] = lambda: f.limiter
     yield f
     app.dependency_overrides.clear()
 
@@ -437,6 +443,36 @@ def test_slow_scoring_returns_sample_unscored(
     assert body["sample"][0]["title"] == "Engineer"
     assert body["sample"][0]["match_score"] is None
     assert len(fakes.scored) == 1
+
+
+@needs_db
+def test_over_hourly_limit_is_429(companies_client, make_user, auth_header, fakes):
+    # BE-049. Every call counts, the failing ones too.
+    fakes.limiter = RateLimiter(2, window_seconds=3600)
+    me, other = make_user(), make_user()
+    headers = auth_header(me["id"])
+    _detect(companies_client, headers, "jobs.lever.co/acme")
+    fakes.board_result = FetchError("HTTP 404")
+    _detect(companies_client, headers, "jobs.lever.co/acme", expected=422)
+
+    resp = companies_client.post(
+        "/companies/detect", headers=headers, json={"url": "jobs.lever.co/acme"}
+    )
+    assert resp.status_code == 429
+    assert resp.json()["detail"] == "too many detect requests, try again later"
+    assert 3500 < int(resp.headers["Retry-After"]) <= 3600
+    # No work done for the rejected call.
+    assert len(fakes.fetched) == 2
+    # Per user.
+    fakes.board_result = []
+    _detect(companies_client, auth_header(other["id"]), "jobs.lever.co/acme")
+
+
+def test_get_detect_limiter_is_built_once():
+    request = _request(detect_limit_per_hour=3)
+    limiter = asyncio.run(get_detect_limiter(request))  # type: ignore[arg-type]
+    assert asyncio.run(get_detect_limiter(request)) is limiter  # type: ignore[arg-type]
+    assert (limiter.limit, limiter.window) == (3, 3600)
 
 
 def _request(**settings) -> SimpleNamespace:
