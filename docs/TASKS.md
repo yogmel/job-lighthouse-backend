@@ -776,6 +776,24 @@ OpenAI call can take up to 60s, and `nginx/` sets no `proxy_read_timeout`
   budget inside the request, or 202 + poll like BE-045)
 - The add-company flow (FE-012) still shows the resolving state
 
+### BE-053 · Let slow selector discovery finish instead of timing out
+
+**Target:** backend **Version:** v0.8
+
+BE-048's 50s budget fits under Nginx's 60s default, but discovery's worst
+case is far longer (two LLM calls of up to 60s each, plus a 40s render).
+A slow page that would have worked comes back `needs_custom` with
+"detection took too long". Also, work already running in a thread (fetch,
+render) isn't cancelled when the budget runs out.
+
+**Acceptance criteria:**
+
+- Decide from real timings whether the budget is too tight (e.g. log how
+  long detects take and how often they time out)
+- If it is: raise `proxy_read_timeout` for `/companies/detect` only, raise
+  `DETECT_BUDGET_SECONDS` to stay under it, and check the frontend's own
+  request timeout allows it
+
 ### ~~BE-049 · Rate-limit POST /companies/detect~~
 
 **Target:** backend **Version:** v0.8

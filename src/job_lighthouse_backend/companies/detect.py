@@ -74,7 +74,9 @@ SAMPLE_SIZE = 5
 
 # Seconds one detect may take, under Nginx's 60s default with margin. The
 # worst case without it: static GET (25s), LLM (60s), render (30s load +
-# 10s settle), LLM (60s), scoring (60s).
+# 10s settle), LLM (60s), scoring (60s). So a slow discovery that would
+# have worked can be cut off as "too long". Raising it means raising
+# Nginx's proxy_read_timeout for /companies/detect first (BE-053).
 DETECT_BUDGET_SECONDS = 50.0
 TIMED_OUT = "detection took too long"
 
