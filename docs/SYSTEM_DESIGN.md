@@ -324,6 +324,12 @@ type Source =
   (bespoke `scrape_google()`, `scrape_shopify()`, etc. dispatched by a type
   string) — the schema just makes that pattern first-class instead of a
   hardcoded `if/elif` chain.
+- Handlers live in `job_runner/handlers.py`, in a registry keyed by
+  `handler`. A handler returns its openings (empty included) for success, or
+  raises `FetchError` for failure. `POST`/`PUT /companies` accept any
+  non-empty `handler` name; until code ships under that name, runs and
+  `POST /companies/{id}/test` report the company `skipped`
+  (`"no handler named '<name>' yet"`), and its jobs are left alone.
 
 Stored as a single `jsonb` column; the union is validated in the app layer.
 
@@ -424,9 +430,18 @@ backend code on `main` as of BE-011 – BE-015.
 | `POST /auth/google` | `{ id_token }` (from Google Identity Services)      | `200 { access_token, token_type: "bearer" }` |
 | `GET /account`      | none                                                | `200 Account`                                |
 | `PUT /account`      | `{ current_password?, email?, new_password? }` (at least one of `email`, `new_password`) | `200 Account` |
+| `POST /auth/password-reset/request` | `{ email }`                          | `202`, no body                               |
+| `POST /auth/password-reset/confirm` | `{ token, new_password }`            | `204`, no body                               |
+| `GET /account/export` | none                                              | `200 Export`                                 |
 | `DELETE /account`   | `{ current_password? }`                             | `204`, no body                               |
 
 - `Account` is `{ id, email, email_verified, has_password, google_linked, created_at }`.
+- `Export` (BE-043) is `{ exported_at, account, config, companies, jobs,
+  runs, run_company_results }`. `account` is an `Account`. `config` is one
+  object or `null`. Every other key is a list of that table's rows, each
+  with all of its columns (snake_case, as in [Schemas](#schemas)), oldest
+  first. `run_company_results` are the ones from the caller's runs.
+  Password and reset-token hashes are never included.
 - `access_token` is the JWT. Its payload carries `sub` (the user id), `iat`
   and `exp`. Send it as `Authorization: Bearer <token>` to both services.
 - Errors use FastAPI's `{ detail }` shape. `detail` strings are
@@ -450,6 +465,24 @@ backend code on `main` as of BE-011 – BE-015.
     frontend shows `msg` under `<field>`.
   - `503 { detail }`: `/auth/google` when `GOOGLE_CLIENT_ID` isn't set on the
     server.
+  - `400 { detail }`: `/auth/password-reset/confirm` with an unknown,
+    expired or already-used token. Not 401, so it doesn't log anyone out.
+- **Password reset** (BE-041, BE-042):
+  - `request` always answers the same `202`, for unknown emails, Google-only
+    accounts, over-the-limit requests, failed sends and unconfigured email
+    alike. The lookup and send run after the response, so timing doesn't
+    reveal whether the email is registered either.
+  - The email links to `PASSWORD_RESET_URL?token=<token>`. The frontend
+    page reads `token` and posts it to `confirm` with the new password
+    (8–256 characters, like signup).
+  - A token lasts **1 hour** and works **once**. Only its SHA-256 is
+    stored. A successful confirm also voids the user's other unused tokens
+    and sets `email_verified = true`.
+  - At most 5 requests per email per hour actually send (in memory, like
+    the detect limit). Extra ones still get the `202`.
+  - Google-only accounts get a link too; confirming it sets their first
+    password.
+  - Confirm doesn't log the user in and doesn't revoke JWTs already issued.
 - **`DELETE /account`** (BE-044): an account with a password must send
   `current_password`; a Google-only account sends no body. It deletes the
   user and, by cascade, their config, companies, jobs, runs, run company

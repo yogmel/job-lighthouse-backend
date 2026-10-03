@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from job_lighthouse_backend.companies.companies import get_fetcher
 from job_lighthouse_backend.companies.main import app
+from job_lighthouse_backend.job_runner import handlers
 from job_lighthouse_backend.job_runner.openings import FetchError, Opening
 
 from .conftest import BOARD_SOURCE, needs_db
@@ -132,17 +133,33 @@ def test_unexpected_error_hides_message(
     }
 
 
-def test_custom_source_is_skipped(
-    companies_client, make_user, make_company, auth_header, use_fetch
+def test_custom_source_without_handler_is_skipped(
+    companies_client, make_user, make_company, auth_header
 ):
+    # The real fetcher: no handler is registered under "x".
     user = make_user()
     company_id = make_company(user["id"], source={"kind": "custom", "handler": "x"})
-    fetch = use_fetch(FakeFetch([]))
 
     body = _test(companies_client, company_id, auth_header(user["id"]))
-    assert body["status"] == "skipped"
-    assert body["jobs_found"] == 0
-    assert fetch.sources == []
+    assert body == {
+        "status": "skipped",
+        "jobs_found": 0,
+        "error": "no handler named 'x' yet",
+    }
+
+
+def test_custom_source_runs_its_handler(
+    companies_client, make_user, make_company, auth_header, db, monkeypatch
+):
+    monkeypatch.setitem(
+        handlers.HANDLERS, "x", lambda: [Opening("A", "https://x/1")] * 2
+    )
+    user = make_user()
+    company_id = make_company(user["id"], source={"kind": "custom", "handler": "x"})
+
+    body = _test(companies_client, company_id, auth_header(user["id"]))
+    assert body == {"status": "ok", "jobs_found": 1, "error": None}
+    assert _counts(db, company_id) == (0, 0)
 
 
 def test_invalid_stored_source_fails(
