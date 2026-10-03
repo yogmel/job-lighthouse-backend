@@ -39,6 +39,8 @@ RENDER_TIMEOUT_MS = 30_000
 SELECTOR_WAIT_MS = 10_000
 # Selector discovery has no selector to wait on: it waits this long at most
 # for the network to go quiet, so job lists fetched after ``load`` show up.
+# Like SELECTOR_WAIT_MS it comes after ``goto``, so a render can take
+# RENDER_TIMEOUT_MS + this (40s), not just RENDER_TIMEOUT_MS.
 SETTLE_WAIT_MS = 10_000
 
 # Takes a URL, returns (final URL, HTML).
