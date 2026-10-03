@@ -806,7 +806,7 @@ This is probably the most common thing users paste.
 - Embed detection reads the fetched HTML (script `src`, iframe `src`,
   links); only known board hosts count
 
-### BE-051 · Wait for client-rendered job lists in selector discovery
+### ~~BE-051 · Wait for client-rendered job lists in selector discovery~~
 
 **Target:** backend **Version:** v0.8
 
