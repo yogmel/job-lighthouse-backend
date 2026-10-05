@@ -1,4 +1,4 @@
-"""GET/PUT /account: read and update the caller's own credentials.
+"""GET/PUT/DELETE /account: the caller's own credentials and account.
 
 Every query is scoped to the ``user_id`` in the JWT. Responses always go
 through ``AccountOut``, so ``password_hash`` can never leak.
@@ -10,6 +10,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field, model_validator
+from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,6 +62,18 @@ class AccountUpdate(BaseModel):
         return self
 
 
+class AccountDelete(BaseModel):
+    current_password: Annotated[str, Field(max_length=MAX_PASSWORD_LENGTH)] | None = (
+        None
+    )
+
+
+def _wrong_password() -> HTTPException:
+    return HTTPException(
+        status.HTTP_403_FORBIDDEN, detail="Current password is incorrect"
+    )
+
+
 def _email_taken() -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, detail="Email already in use")
 
@@ -98,9 +111,7 @@ async def update_account(
     if user.password_hash is not None and not verify_password(
         body.current_password or "", user.password_hash
     ):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN, detail="Current password is incorrect"
-        )
+        raise _wrong_password()
 
     if body.email is not None:
         if body.email.lower() != user.email.lower():
@@ -121,3 +132,34 @@ async def update_account(
         raise _email_taken() from None
 
     return AccountOut.from_user(user)
+
+
+@router.delete(
+    "",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_403_FORBIDDEN: {"description": "Current password is incorrect"},
+        status.HTTP_404_NOT_FOUND: {"description": "Account not found"},
+    },
+)
+async def delete_account(
+    user_id: CurrentUserId, session: Session, body: AccountDelete | None = None
+) -> None:
+    """Delete the account and every row it owns. Can't be undone.
+
+    - Account with a password: requires ``current_password`` (403 like
+      ``PUT``). A Google-only account needs only its token.
+    - The database cascades from ``users`` to config, companies, jobs, runs,
+      run company results and reset tokens.
+    - The account's tokens stop working at once: every protected route
+      checks the user still exists.
+    """
+    user = await _load_user(session, user_id)
+    current = body.current_password if body is not None else None
+    if user.password_hash is not None and not verify_password(
+        current or "", user.password_hash
+    ):
+        raise _wrong_password()
+
+    await session.execute(delete(User).where(User.id == user_id))
+    await session.commit()

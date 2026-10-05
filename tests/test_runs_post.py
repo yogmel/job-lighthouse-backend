@@ -253,9 +253,9 @@ def test_shutdown_closes_a_running_run(
     assert (status_, error) == ("failed", "CancelledError")
 
 
-def test_deleted_account_is_404(client, auth_header):
+def test_deleted_account_is_401(client, auth_header):
     resp = client.post("/runs", headers=auth_header(uuid.uuid4()))
-    assert resp.status_code == 404
+    assert resp.status_code == 401
 
 
 def test_default_fetcher_is_the_real_one():

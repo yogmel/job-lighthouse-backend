@@ -93,8 +93,10 @@ def protected_client(request: pytest.FixtureRequest) -> Iterator[TestClient]:
 
 
 @needs_db
-def test_valid_token_injects_user_id(protected_client: TestClient, auth_header) -> None:
-    user_id = uuid.uuid4()
+def test_valid_token_injects_user_id(
+    protected_client: TestClient, auth_header, make_user
+) -> None:
+    user_id = make_user()["id"]
     response = protected_client.get("/_test/whoami", headers=auth_header(user_id))
     assert response.status_code == 200
     assert response.json() == {"user_id": str(user_id)}
@@ -113,6 +115,15 @@ def test_missing_or_invalid_token_returns_401(
     protected_client: TestClient, headers: dict
 ) -> None:
     response = protected_client.get("/_test/whoami", headers=headers)
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+@needs_db
+def test_token_of_missing_user_returns_401(
+    protected_client: TestClient, auth_header
+) -> None:
+    response = protected_client.get("/_test/whoami", headers=auth_header(uuid.uuid4()))
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
 

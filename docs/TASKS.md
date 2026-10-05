@@ -965,7 +965,7 @@ JSON export of all rows owned by the requesting user across every table.
 - Export includes Config, Companies, Jobs, Runs, RunCompanyResults for that
   user only
 
-### BE-044 · DELETE /account
+### ~~BE-044 · DELETE /account~~
 
 **Target:** backend **Version:** v0.11
 
