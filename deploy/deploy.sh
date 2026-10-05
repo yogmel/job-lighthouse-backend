@@ -52,6 +52,11 @@ for id in "${ids[@]}"; do
   fi
 done
 
+# PROJ-011: Nginx resolves the app containers' IPs only at start, and `up`
+# leaves it running while it recreates them. Reload so it picks up the new
+# IPs (and any nginx/default.conf change); otherwise it proxies to stale ones.
+compose exec -T nginx nginx -s reload
+
 # Kept on disk so any later `docker compose` call uses the deployed image
 # instead of trying to build (there is no source here).
 echo "APP_IMAGE=$IMAGE_REF" > image.env
