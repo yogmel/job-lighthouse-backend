@@ -92,6 +92,13 @@ class Run(Base):
     status: Mapped[str] = mapped_column(Text)
     # "cron" | "manual"
     trigger: Mapped[str] = mapped_column(Text)
+    # "all" | "company": a Full run, or a Single-company run (BE-058)
+    scope: Mapped[str] = mapped_column(Text, server_default="all")
+    # The Company of a Single-company run; null for a Full run, or once the
+    # Company is deleted.
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL")
+    )
     jobs_found: Mapped[int] = mapped_column(server_default="0")
     error: Mapped[str | None] = mapped_column(Text)
 

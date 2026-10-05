@@ -113,11 +113,16 @@ def _config(db: psycopg.Connection, user_id: uuid.UUID, cron: str) -> None:
     )
 
 
-def _run(db: psycopg.Connection, user_id: uuid.UUID, started_at: datetime) -> None:
+def _run(
+    db: psycopg.Connection,
+    user_id: uuid.UUID,
+    started_at: datetime,
+    scope: str = "all",
+) -> None:
     db.execute(
-        "INSERT INTO runs (user_id, status, trigger, started_at)"
-        " VALUES (%s, 'success', 'manual', %s)",
-        (user_id, started_at),
+        "INSERT INTO runs (user_id, status, trigger, started_at, scope)"
+        " VALUES (%s, 'success', 'manual', %s, %s)",
+        (user_id, started_at, scope),
     )
 
 
@@ -163,6 +168,28 @@ def test_tick_calls_only_due_users(db, make_user) -> None:
     assert due in called
     assert ran not in called
     assert later not in called
+
+
+@needs_db
+def test_single_company_run_doesnt_make_a_full_run_not_due(db, make_user) -> None:
+    """BE-058: only ``scope = "all"`` runs count for the due check."""
+    user_id = _user(db, make_user, "0 7 * * *", T - timedelta(days=1))
+    _run(db, user_id, T + timedelta(seconds=1), scope="company")
+
+    assert user_id in _tick(T + timedelta(seconds=30))
+
+
+@needs_db
+def test_user_with_only_single_company_runs_waits_for_first_fire(db, make_user) -> None:
+    user_id = make_user()["id"]
+    _config(db, user_id, "* * * * *")
+    created_at = db.execute(
+        "SELECT created_at FROM users WHERE id = %s", (user_id,)
+    ).fetchone()[0]
+    _run(db, user_id, created_at + timedelta(seconds=10), scope="company")
+
+    assert user_id not in _tick(created_at)
+    assert user_id in _tick(created_at + timedelta(minutes=1))
 
 
 @needs_db

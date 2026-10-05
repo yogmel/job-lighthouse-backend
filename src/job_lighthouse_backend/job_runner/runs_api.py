@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -27,7 +27,7 @@ from job_lighthouse_backend.common.email import Mailer, resend_mailer
 from .company_run import Fetcher, fetch_openings
 from .models import Company, Run, RunCompanyResult
 from .pipeline import run_pipeline
-from .runs import Pipeline, execute_run
+from .runs import CompanyNotFound, CompanyPaused, Pipeline, execute_run
 from .scoring import Scorer, create_openai_scorer
 
 logger = logging.getLogger(__name__)
@@ -95,10 +95,17 @@ class RunOut(BaseModel):
     id: uuid.UUID
     status: Literal["running", "success", "failed"]
     trigger: Literal["cron", "manual"]
+    scope: Literal["all", "company"]
+    # Set only on a Single-company run, and null once its Company is deleted.
+    company_id: uuid.UUID | None
     started_at: datetime
     finished_at: datetime | None
     jobs_found: int
     error: str | None
+
+
+class RunIn(BaseModel):
+    company_id: uuid.UUID
 
 
 @router.post(
@@ -106,8 +113,10 @@ class RunOut(BaseModel):
     response_model=RunOut,
     status_code=status.HTTP_202_ACCEPTED,
     responses={
-        status.HTTP_404_NOT_FOUND: {"description": "Account not found"},
-        status.HTTP_409_CONFLICT: {"description": "A run is already in progress"},
+        status.HTTP_404_NOT_FOUND: {"description": "Account or Company not found"},
+        status.HTTP_409_CONFLICT: {
+            "description": "A run is already in progress, or the Company is paused"
+        },
     },
 )
 async def create_run(
@@ -116,8 +125,13 @@ async def create_run(
     fetch: Annotated[Fetcher, Depends(get_fetcher)],
     scorer: Annotated[Scorer | None, Depends(get_scorer)],
     mailer: Annotated[Mailer | None, Depends(get_mailer)],
+    body: Annotated[RunIn | None, Body()] = None,
 ) -> RunOut:
     """Start a run and return its ``Runs`` row with ``status: "running"``.
+
+    With ``{ company_id }`` it is a Single-company run: only that Company is
+    fetched (``scope: "company"``), and the scheduler ignores it. Without a
+    body it is a Full run of every active company.
 
     The pipeline goes on in the background and closes the row as
     ``success`` or ``failed``:
@@ -127,6 +141,7 @@ async def create_run(
     - When email is configured, the digest of all open, not-yet-notified
       jobs is sent at the end. A failed send doesn't fail the run.
     - 409 if a run for this user holds the lock; nothing is written.
+    - 404 if the Company is missing or another user's; 409 if it is paused.
     """
 
     pipeline = _pipeline(fetch, scorer, mailer)
@@ -135,7 +150,12 @@ async def create_run(
     # both are released on every path, even if this request goes away.
     task = asyncio.create_task(
         execute_run(
-            request.app.state.engine, user_id, "manual", pipeline, opened.set_result
+            request.app.state.engine,
+            user_id,
+            "manual",
+            pipeline,
+            opened.set_result,
+            body.company_id if body else None,
         )
     )
     tasks: set[asyncio.Task[object]] = request.app.state.background_tasks
@@ -148,6 +168,14 @@ async def create_run(
         return RunOut.model_validate(opened.result())
     try:
         run = task.result()
+    except CompanyNotFound:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, detail="Company not found"
+        ) from None
+    except CompanyPaused:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, detail="Company is paused"
+        ) from None
     except IntegrityError:
         # Only the runs.user_id FK can fail: the token's user was deleted.
         raise HTTPException(
@@ -242,7 +270,9 @@ def _finished(task: asyncio.Task[Run | None]) -> None:
     if task.cancelled():
         return
     exc = task.exception()
-    if exc is not None and not isinstance(exc, IntegrityError):
+    if exc is not None and not isinstance(
+        exc, IntegrityError | CompanyNotFound | CompanyPaused
+    ):
         logger.error("Background run crashed", exc_info=exc)
 
 

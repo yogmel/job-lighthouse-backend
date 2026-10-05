@@ -23,20 +23,21 @@ async def run_pipeline(
     scorer: Scorer | None = None,
     mailer: Mailer | None = None,
 ) -> int:
-    """Process every active company of ``run.user_id``. Returns new jobs.
+    """Process every active company of ``run.user_id``, or only
+    ``run.company_id`` for a Single-company run. Returns new jobs.
 
     Without a ``scorer`` or a profile, new jobs are stored unscored. Without
     a ``mailer``, no digest is sent and ``notified_at`` stays null.
     """
     # Read once: a profile edit mid-run applies to the next run, not this one.
     profile = await load_profile(session, run.user_id)
-    companies = (
-        await session.scalars(
-            select(Company)
-            .where(Company.user_id == run.user_id, Company.active.is_(True))
-            .order_by(Company.added_at, Company.id)
-        )
-    ).all()
+    stmt = select(Company).where(
+        Company.user_id == run.user_id, Company.active.is_(True)
+    )
+    if run.scope == "company":
+        stmt = stmt.where(Company.id == run.company_id)
+    ordered = stmt.order_by(Company.added_at, Company.id)
+    companies = (await session.scalars(ordered)).all()
     new_jobs = 0
     for company in companies:
         outcome = await run_company(session, run.id, company, fetch)
