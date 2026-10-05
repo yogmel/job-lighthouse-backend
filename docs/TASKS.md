@@ -1016,6 +1016,20 @@ The README only covered infra; CLAUDE.md still described an empty skeleton.
 
 ## v1.0 — Cutover
 
+### ~~PROJ-011 · Reload the compose Nginx after each deploy~~
+
+**Target:** project **Version:** v1.0
+
+The compose Nginx resolves `job-runner` and `companies` to IPs once, at
+start. Deploys recreate both app containers but leave Nginx running, so it
+proxied to stale IPs and every route returned FastAPI's 404. Edits to
+`nginx/default.conf` also never took effect on deploy.
+
+**Acceptance criteria:**
+
+- `deploy.sh` reloads the compose Nginx after `compose up`
+- After a deploy, `GET /jobs` without a token returns 401, not 404
+
 ### PROJ-005 · One-time company import script
 
 **Target:** project **Version:** v1.0

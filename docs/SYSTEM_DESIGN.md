@@ -798,7 +798,8 @@ deploys separately to Vercel.
 **CI/CD: GitHub Actions**, building images and deploying to the droplet on
 push to `main`. Reuses the CI muscle already in this repo (`daily.yml`,
 `full-scan.yml`), retargeted from "run the script" to "build and ship the
-services."
+services." Each deploy recreates the app containers but not Nginx, so the
+deploy reloads Nginx afterwards; it resolves upstream IPs only at start.
 
 ## Cutover / data migration
 
