@@ -151,6 +151,21 @@ Go-live. Replaces the current script in production.
 
 **Depends on:** every version above.
 
+Also in v1.0, user-facing fixes from spec #126:
+
+- Delete a company (its jobs go too; run history stays)
+- Pausing a company leaves its jobs alone; paused companies' jobs skip the digest
+- Frontend job list pages past the first 50 via the cursor
+
+---
+
+## v1.1 — Company and run controls
+
+- Total job count on the first page of `GET /jobs` (`X-Total-Count`)
+- Single-company run (`POST /runs { company_id }`), not counted by the scheduler
+
+**Depends on:** v1.0.
+
 ---
 
 ## Deferred indefinitely (not versioned)
