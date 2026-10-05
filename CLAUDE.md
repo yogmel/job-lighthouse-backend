@@ -89,6 +89,8 @@ Two services behind Nginx. Everything else is a module, not a deploy.
 - Tick every minute, read `Config.cron`, compare against the last
   `Runs.started_at`. Don't register cron jobs at boot.
 - Scheduled and manual runs share the same pipeline and the same lock.
+- Single-company runs (`scope = "company"`) don't count for the due check:
+  it looks only at `scope = "all"` runs.
 
 **Onboarding (`POST /companies/detect`)**
 - Deterministic ATS URL match first. Call the LLM only when no board matches.

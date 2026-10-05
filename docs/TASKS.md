@@ -1186,7 +1186,7 @@ exposed via CORS. Issue: #130.
 - Count matches the filters; header absent on cursor pages
 - Header in CORS `expose_headers`
 
-### BE-058 · Single-company run
+### ~~BE-058 · Single-company run~~
 
 **Target:** backend **Version:** v1.1
 

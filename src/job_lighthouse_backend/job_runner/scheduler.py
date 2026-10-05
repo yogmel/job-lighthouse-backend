@@ -4,7 +4,8 @@ Nothing is registered at boot. Every tick reads ``Config.cron`` fresh, so a
 ``PUT /config`` takes effect on the next tick with no restart.
 
 A user is due when the first cron fire time **after** their last run's
-``started_at`` (any trigger, any status) is at or before now. So:
+``started_at`` (any trigger, any status, Full runs only) is at or before now.
+A Single-company run is not a schedule run, so it never counts. So:
 
 - after downtime, a missed schedule runs once, not once per missed fire
 - a manual run after a fire time counts as that fire's run
@@ -44,7 +45,7 @@ class InvalidCron(ValueError):
 class Schedule:
     user_id: uuid.UUID
     cron: str
-    # Last run's ``started_at``, or signup time if the user never ran.
+    # Last Full run's ``started_at``, or signup time if the user never ran.
     last_started_at: datetime
 
 
@@ -66,7 +67,7 @@ async def load_schedules(
     """Every user with a ``Config`` row, or only ``user_ids``."""
     last_run = (
         select(func.max(Run.started_at))
-        .where(Run.user_id == Config.user_id)
+        .where(Run.user_id == Config.user_id, Run.scope == "all")
         .scalar_subquery()
     )
     stmt = select(

@@ -319,3 +319,151 @@ def test_scorer_needs_api_key():
     assert scorer is not None
     # Built once, then reused.
     assert get_scorer(with_key) is scorer
+
+
+# --- BE-058: Single-company run -------------------------------------------
+
+
+def _post_single(client, auth_header, user, company_id):
+    return client.post(
+        "/runs",
+        headers=auth_header(user["id"]),
+        json={"company_id": str(company_id)},
+    )
+
+
+def _run_count(db, user_id) -> int:
+    row = db.execute(
+        "SELECT count(*) FROM runs WHERE user_id = %s", (user_id,)
+    ).fetchone()
+    assert row is not None
+    return row[0]
+
+
+def test_single_company_run(
+    client, db, make_user, make_company, auth_header, fake_fetch
+):
+    user = make_user()
+    target = make_company(user["id"], name="Target", source=_board("target"))
+    other = make_company(user["id"], name="Other", source=_board("other"))
+    gone = _add_job(db, user["id"], target)
+    other_job = _add_job(db, user["id"], other)
+    new = _url()
+    fake_fetch.by_key = {"target": [Opening("A", new)]}
+
+    resp = _post_single(client, auth_header, user, target)
+
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["scope"] == "company"
+    assert body["company_id"] == str(target)
+    assert body["trigger"] == "manual"
+    run_id = uuid.UUID(body["id"])
+    assert wait_for_run(db, run_id) == ("success", 1, None)
+    assert fake_fetch.calls == ["target"]
+    assert _results(db, run_id) == {target: ("ok", 1)}
+    # Same close rules as a Full run; other companies are untouched.
+    assert _active(db, gone) is False
+    assert _active(db, other_job) is True
+    assert _active(db, new)
+
+
+def test_run_without_body_is_a_full_run(client, db, make_user, auth_header):
+    user = make_user()
+    body = client.post("/runs", headers=auth_header(user["id"])).json()
+    assert body["scope"] == "all"
+    assert body["company_id"] is None
+    wait_for_run(db, body["id"])
+
+
+def test_single_company_run_sends_the_digest(
+    client, db, make_user, make_company, auth_header, fake_fetch
+):
+    from job_lighthouse_backend.job_runner.runs_api import get_mailer
+
+    from .test_digest import FakeMailer
+
+    mailer = FakeMailer()
+    client.app.dependency_overrides[get_mailer] = lambda: mailer
+    user = make_user()
+    target = make_company(user["id"], name="Target", source=_board("target"))
+    fake_fetch.by_key = {"target": [Opening("A", _url())]}
+
+    resp = _post_single(client, auth_header, user, target)
+
+    wait_for_run(db, resp.json()["id"])
+    assert len(mailer.sent) == 1
+
+
+def test_single_company_run_missing_company_is_404(
+    client, db, make_user, auth_header, fake_fetch
+):
+    user = make_user()
+
+    resp = _post_single(client, auth_header, user, uuid.uuid4())
+
+    assert resp.status_code == 404
+    assert _run_count(db, user["id"]) == 0
+
+
+def test_single_company_run_other_users_company_is_404(
+    client, db, make_user, make_company, auth_header, fake_fetch
+):
+    owner, intruder = make_user(), make_user()
+    company_id = make_company(owner["id"], source=_board("x"))
+
+    resp = _post_single(client, auth_header, intruder, company_id)
+
+    assert resp.status_code == 404
+    assert fake_fetch.calls == []
+    assert _run_count(db, intruder["id"]) == 0
+    assert _run_count(db, owner["id"]) == 0
+
+
+def test_single_company_run_paused_company_is_409(
+    client, db, make_user, make_company, auth_header, fake_fetch
+):
+    user = make_user()
+    company_id = make_company(user["id"], active=False, source=_board("p"))
+
+    resp = _post_single(client, auth_header, user, company_id)
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "Company is paused"
+    assert fake_fetch.calls == []
+    assert _run_count(db, user["id"]) == 0
+
+
+def test_single_company_run_contention_is_409(
+    client, db, make_user, make_company, auth_header
+):
+    user = make_user()
+    company_id = make_company(user["id"], source=_board("x"))
+    key = lock_name(user["id"])
+    db.execute("SELECT pg_advisory_lock(hashtextextended(%s, 0))", (key,))
+    try:
+        resp = _post_single(client, auth_header, user, company_id)
+    finally:
+        db.execute("SELECT pg_advisory_unlock(hashtextextended(%s, 0))", (key,))
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "A run is already in progress"
+    assert _run_count(db, user["id"]) == 0
+
+
+def test_single_company_run_outlives_its_company(
+    client, companies_client, db, make_user, make_company, auth_header
+):
+    user = make_user()
+    company_id = make_company(user["id"], name="Gone", source=_board("g"))
+    run_id = _post_single(client, auth_header, user, company_id).json()["id"]
+    wait_for_run(db, run_id)
+
+    deleted = companies_client.delete(
+        f"/companies/{company_id}", headers=auth_header(user["id"])
+    )
+    assert deleted.status_code == 204
+
+    runs = client.get("/runs", headers=auth_header(user["id"])).json()
+    assert [(r["id"], r["scope"], r["company_id"]) for r in runs] == [
+        (run_id, "company", None)
+    ]

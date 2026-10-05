@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from job_lighthouse_backend.common.db import create_sessionmaker
 
-from .models import Run
+from .models import Company, Run
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,14 @@ OnOpen = Callable[[Run], None]
 
 # Keeps ``Runs.error`` readable; the full traceback goes to the log.
 MAX_ERROR_LENGTH = 1000
+
+
+class CompanyNotFound(Exception):
+    """The Company of a Single-company run is missing or isn't the user's."""
+
+
+class CompanyPaused(Exception):
+    """The Company of a Single-company run is paused."""
 
 
 def lock_name(user_id: uuid.UUID) -> str:
@@ -59,8 +67,13 @@ async def execute_run(
     trigger: Trigger,
     pipeline: Pipeline,
     on_open: OnOpen | None = None,
+    company_id: uuid.UUID | None = None,
 ) -> Run | None:
     """Run ``pipeline`` for ``user_id`` under the lock.
+
+    With ``company_id`` it is a Single-company run (``scope: "company"``).
+    The Company is checked under the lock, so a delete can't slip in between;
+    ``CompanyNotFound`` or ``CompanyPaused`` is raised and no row is written.
 
     Returns the closed ``Runs`` row (``success`` or ``failed``), or ``None``
     if another run holds the lock. In that case no row is written and
@@ -72,7 +85,7 @@ async def execute_run(
     async with user_run_lock(engine, user_id) as acquired:
         if not acquired:
             return None
-        return await _run(sessionmaker, user_id, trigger, pipeline, on_open)
+        return await _run(sessionmaker, user_id, trigger, pipeline, on_open, company_id)
 
 
 @asynccontextmanager
@@ -110,9 +123,26 @@ async def _run(
     trigger: Trigger,
     pipeline: Pipeline,
     on_open: OnOpen | None,
+    company_id: uuid.UUID | None,
 ) -> Run:
     async with sessionmaker() as session:
-        run = Run(user_id=user_id, trigger=trigger, status="running")
+        if company_id is not None:
+            active = await session.scalar(
+                select(Company.active).where(
+                    Company.id == company_id, Company.user_id == user_id
+                )
+            )
+            if active is None:
+                raise CompanyNotFound(company_id)
+            if not active:
+                raise CompanyPaused(company_id)
+        run = Run(
+            user_id=user_id,
+            trigger=trigger,
+            status="running",
+            scope="all" if company_id is None else "company",
+            company_id=company_id,
+        )
         session.add(run)
         await session.commit()
         await session.refresh(run)

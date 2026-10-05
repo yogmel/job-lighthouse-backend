@@ -267,9 +267,14 @@ started_at: Date;
 finished_at: Date | null;
 status: "running" | "success" | "failed";
 trigger: "cron" | "manual";
+scope: "all" | "company"; // Full run, or a Single-company run (BE-058)
+company_id: string | null; // FK -> Companies.id, ON DELETE SET NULL; set only when scope is "company"
 jobs_found: number;
 error: string | null;
 ```
+
+A Single-company run keeps `scope: "company"` after its Company is deleted;
+only `company_id` becomes `null`. Existing rows were backfilled to `"all"`.
 
 Earns its place three times over: it holds `last_run_at` for the scheduler, it
 backs a "last run: 2h ago, 4 new jobs" panel on the dashboard, and it is where a
@@ -384,8 +389,8 @@ location?: string;
 | `GET`    | `/jobs`                       | fetch jobs, newest first; `limit` (default 50, max 200) + keyset `cursor`, next page in the `X-Next-Cursor` header. Without a `cursor`, an `X-Total-Count` header holds the number of jobs matching the filters; cursor pages omit it |
 | `GET`    | `/config`                     | fetch configuration                                      |
 | `PUT`    | `/config`                     | modify configuration                                     |
-| `POST`   | `/runs`                       | trigger a run now (manual); `202` with the `running` row, the run goes on in the background (`409` if one is in flight) |
-| `GET`    | `/runs`                       | run history for the dashboard, most recent first; `limit` (default 50, max 200) |
+| `POST`   | `/runs`                       | trigger a run now (manual); optional body `{ company_id }` makes it a Single-company run of that active Company (`404` if missing or not the caller's, `409` "Company is paused"); `202` with the `running` row, the run goes on in the background (`409` if one is in flight) |
+| `GET`    | `/runs`                       | run history for the dashboard, most recent first, with `scope` and `company_id`; `limit` (default 50, max 200) |
 | `GET`    | `/runs/{id}/companies`        | per-company breakdown for one run (`RunCompanyResult`); `company` is the current name while the Company exists, else the stored `company_name`, and `company_id` is `null` once it's gone; ordered by that name; `404` if the run isn't the caller's |
 
 ### Add-company detection shapes
@@ -526,7 +531,8 @@ backend code on `main` as of BE-011 – BE-015.
 0. Acquire the advisory lock and open a `Runs` row (`status: "running"`); close
    it with `success` / `failed` when the steps below finish — see
    [Scheduling](#scheduling)
-1. Get companies from DB (active only)
+1. Get companies from DB (active only; a Single-company run gets just its one
+   Company)
 2. Fetch current openings for each — board API call, selector scrape, or the
    company's `custom` handler, depending on `Source.kind`
 3. Get jobs from DB
@@ -572,10 +578,13 @@ Cron` box is conceptual: the scheduler and the `/config` endpoints live
 it against the last run's `started_at` (from `Runs`) to decide whether a run is
 due.
 
-- Due = the first cron fire time after the last run's `started_at` (any
-  trigger, any status) is at or before now. After downtime, a missed schedule
+- Due = the first cron fire time after the last **Full** run's `started_at`
+  (`scope = "all"`; any trigger, any status) is at or before now. After downtime, a missed schedule
   runs once, not once per missed fire.
-- A user with no runs yet waits for the first fire after `users.created_at`.
+- A user with no Full runs yet waits for the first fire after `users.created_at`.
+- A Single-company run (`POST /runs` with `{ company_id }`) uses the same
+  pipeline, lock, close rules, scoring and Digest, with `trigger: "manual"`,
+  but is not a schedule run: it never makes a Full run "not due".
 - Cron is a standard 5-field expression in UTC. An invalid one is logged and
   skipped.
 

@@ -82,6 +82,8 @@ def test_response_shape(runner_client, db, make_user, auth_header):
             "id": str(run),
             "status": "failed",
             "trigger": "manual",
+            "scope": "all",
+            "company_id": None,
             "started_at": body[0]["started_at"],
             "finished_at": body[0]["finished_at"],
             "jobs_found": 3,
