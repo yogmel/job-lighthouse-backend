@@ -1030,6 +1030,20 @@ proxied to stale IPs and every route returned FastAPI's 404. Edits to
 - `deploy.sh` reloads the compose Nginx after `compose up`
 - After a deploy, `GET /jobs` without a token returns 401, not 404
 
+### ~~PROJ-013 · /ticket skill: ticket to PR in one command~~
+
+**Target:** project **Version:** v1.0
+
+Every ticket ran the same manual loop: fetch `main`, branch, implement,
+update docs, run checks, push, open the PR.
+
+**Acceptance criteria:**
+
+- `.claude/skills/ticket/SKILL.md` runs that loop, user-invoked only
+- `/ticket <ID>` and `/ticket #<issue>` both resolve to the same ticket
+  and issue
+- CLAUDE.md's ticket workflow mentions `/ticket`
+
 ### PROJ-005 · One-time company import script
 
 **Target:** project **Version:** v1.0

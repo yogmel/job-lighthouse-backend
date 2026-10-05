@@ -119,7 +119,7 @@ CI and deploy are in `README.md` — read it rather than guessing a command.
   pair), named after it. The required `pr-title` check fails unless the
   title starts with a ticket ID. Strike the ticket in `docs/TASKS.md` and
   update `docs/SYSTEM_DESIGN.md` in the same PR. Put `Closes #<issue>` in
-  the body.
+  the body. `/ticket <ID>` or `/ticket #<issue>` runs this whole flow.
 - **DB tests skip silently** without `DATABASE_URL`. A green `uv run pytest`
   with skips proves nothing: use `make test` / `make cov` (they load
   `.env`), or `set -a; . ./.env; set +a` first. In a new git worktree,
