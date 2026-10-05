@@ -343,3 +343,15 @@ Push to `main` builds the image, pushes it to GHCR (`sha-<commit>` tag) and
 deploys it to the droplet with Docker Compose
 (`.github/workflows/deploy.yml` → `deploy/deploy.sh`). One-time droplet setup,
 secrets, operations and rollback: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+## Cutover: import the old company list
+
+One-time (PROJ-005). Copy `config.yaml` from the old `job-scraper` repo, then:
+
+```sh
+uv run python -m job_lighthouse_backend.companies.import_config config.yaml \
+  --email you@example.com --dry-run   # drop --dry-run to write
+```
+
+Needs `DATABASE_URL` and an existing account. Safe to re-run. Custom-handler
+companies are imported paused; entries with `title_prefix` are skipped.

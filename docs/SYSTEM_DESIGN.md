@@ -838,7 +838,13 @@ deploy reloads Nginx afterwards; it resolves upstream IPs only at start.
 
 - **Company list**: one-time import of the current `config.yaml` companies
   (~40, already curated) into the new `Companies`/`Source` schema. No reason
-  to lose that curation by starting from zero.
+  to lose that curation by starting from zero. The import
+  (`companies/import_config.py`, PROJ-005) maps ATS types to `board`,
+  `static`/`dynamic` to `scraper`, and every bespoke `scrape_*` type
+  (`google`, `deel`, `ebay`, ...) to `custom` with that name as `handler`,
+  imported **paused** until a handler ships. Re-runs skip names the user
+  already has. A `title_prefix` entry (Langfuse, a slice of ClickHouse's
+  Ashby board) has no `Source` form and is skipped: add it by hand.
 - **Dedup history**: **not migrated.** Reshaping SQLite's flat dedup rows into
   the richer `Job` schema (score, description, profile version, etc.) isn't
   worth it for what's effectively inbox history. Expect one "everything looks

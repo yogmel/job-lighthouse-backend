@@ -1064,7 +1064,7 @@ update docs, run checks, push, open the PR.
   and issue
 - CLAUDE.md's ticket workflow mentions `/ticket`
 
-### PROJ-005 · One-time company import script
+### ~~PROJ-005 · One-time company import script~~
 
 **Target:** project **Version:** v1.0
 
@@ -1077,6 +1077,8 @@ Script importing `config.yaml`'s ~40 companies into `Companies`/`Source`.
   (`google`, `deel`, `ebay`, `kleinanzeigen`, `aiven`, `bolt`, `betterstack`,
   and the `dynamic` entries) map to `custom` or `scraper` per their current
   `main.py`/`ats_api.py` handling
+- Re-running adds nothing twice; `--dry-run` prints the mapping without a
+  database
 
 ### PROJ-006 · Retire script-run CI workflows
 
