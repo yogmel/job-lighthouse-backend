@@ -133,3 +133,17 @@ CI and deploy are in `README.md` — read it rather than guessing a command.
   even with nothing secret in them. Reword the message.
 - **Before pushing:** `make lint typecheck cov`. CI also runs Semgrep,
   gitleaks, pip-audit and a Trivy image scan (see `README.md` → CI & hooks).
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `yogmel/job-lighthouse-backend`, mirrored in `docs/TASKS.md`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` + `docs/adr/`. See `docs/agents/domain.md`.

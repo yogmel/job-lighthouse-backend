@@ -1,7 +1,7 @@
 # Job Lighthouse — Tasks
 
-Tickets for [VERSIONING.md](./VERSIONING.md), broken down small. Planning doc
-only — not synced to GitHub Issues.
+Tickets for [VERSIONING.md](./VERSIONING.md), broken down small. Mirrored as
+GitHub issues; see [agents/issue-tracker.md](./agents/issue-tracker.md).
 
 IDs: `BE-` backend repo, `FE-` frontend repo, `PROJ-` cross-cutting/repo-less.
 
@@ -1079,3 +1079,133 @@ old script's trigger, monitor first live scheduled run end-to-end.
 
 - First post-cutover digest arrives from the new system, not the old script
 - Old script's GitHub Actions trigger is disabled (not just unused)
+
+### ~~PROJ-012 · Agent skills setup, domain glossary and v1.1 planning docs~~
+
+**Target:** project **Version:** v1.0
+
+Agent-skills config (`docs/agents/`), `CONTEXT.md` glossary, ADR 0001, and
+the tickets from spec #126 mirrored here. Issue: #132.
+
+**Acceptance criteria:**
+
+- Files on `main`; this file and `VERSIONING.md` match the published issues
+
+### BE-054 · Pausing a company leaves its jobs alone
+
+**Target:** backend **Version:** v1.0
+
+Pausing a Company stops it being fetched but leaves its Jobs as they were.
+Resuming changes no Job either. Paused companies' Jobs are left out of the
+Digest. `GET /jobs` items gain `company_active`. Spec: #126. Issue: #127.
+
+**Acceptance criteria:**
+
+- Pause/resume change no Job
+- Digest = open, unsent Jobs whose Company isn't paused
+- `GET /jobs` items include `company_active: bool`
+
+### BE-055 · Run breakdown keeps the company name it ran with
+
+**Target:** backend **Version:** v1.0
+
+`RunCompanyResult` stores the Company name at run time; `company_id` becomes
+nullable (`ON DELETE SET NULL`). Groundwork for BE-056. Issue: #128.
+
+**Acceptance criteria:**
+
+- Existing rows backfilled with the current name
+- `/runs/{id}/companies` shows the current name, or the stored one with
+  `company_id: null` once the Company is gone
+
+### BE-056 · Delete a company
+
+**Target:** backend **Version:** v1.0
+
+`DELETE /companies/{id}` removes the Company and its Jobs, keeps run history
+(ADR 0001). Blocked by BE-055. Issue: #129.
+
+**Acceptance criteria:**
+
+- `204` / `404` (missing or another user's) / `409` while a run holds the lock
+- Jobs deleted; `Runs` and breakdown rows kept with the stored name
+- Re-adding the same Company stores its postings as new Jobs
+
+### FE-019 · Job list follows the cursor
+
+**Target:** frontend **Version:** v1.0
+
+Page through all Jobs with `X-Next-Cursor` ("Load more" or infinite scroll).
+Issue: job-lighthouse-frontend#43.
+
+**Acceptance criteria:**
+
+- Next page requested with the cursor until the header is absent
+- Changing filters resets the list
+
+### FE-020 · Delete company action and paused badge on jobs
+
+**Target:** frontend **Version:** v1.0
+
+Delete a Company from its row menu (confirm, 409 retry message); mark Jobs of
+Paused companies via `company_active`. Blocked by BE-054, BE-056. Issue:
+job-lighthouse-frontend#44.
+
+**Acceptance criteria:**
+
+- Delete with confirm dialog; 204 / 404 / 409 handled
+- Jobs with `company_active: false` show a paused badge
+
+---
+
+## v1.1 — Company and run controls
+
+### BE-057 · Total job count on the first page of GET /jobs
+
+**Target:** backend **Version:** v1.1
+
+`X-Total-Count` header on `GET /jobs` without a cursor, respecting filters,
+exposed via CORS. Issue: #130.
+
+**Acceptance criteria:**
+
+- Count matches the filters; header absent on cursor pages
+- Header in CORS `expose_headers`
+
+### BE-058 · Single-company run
+
+**Target:** backend **Version:** v1.1
+
+`POST /runs` with optional `{ company_id }`. `Runs` gains `scope` and
+`company_id`; the scheduler counts only Full runs. Blocked by BE-056.
+Issue: #131.
+
+**Acceptance criteria:**
+
+- `404` (missing or another user's) / `409` paused / `409` run in progress
+- One Company fetched, one `RunCompanyResult`, normal Digest sent
+- A recent Single-company run doesn't make a Full run "not due"
+- `GET /runs` returns `scope` and `company_id`
+
+### FE-021 · Show the job total
+
+**Target:** frontend **Version:** v1.1
+
+Show "N of total" from the first page's `X-Total-Count`. Blocked by BE-057,
+FE-019. Issue: job-lighthouse-frontend#45.
+
+**Acceptance criteria:**
+
+- Total kept across "Load more", refreshed on filter change
+
+### FE-022 · Run this company button and scope in run history
+
+**Target:** frontend **Version:** v1.1
+
+"Run now" per active Company; run history marks Single-company runs with the
+Company name. Blocked by BE-058. Issue: job-lighthouse-frontend#46.
+
+**Acceptance criteria:**
+
+- 404 / 409 messages shown
+- Single-company runs shown distinctly, including for Deleted companies
