@@ -13,7 +13,8 @@ overlap, while different users' runs don't block each other.
 
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Literal
 
 from sqlalchemy import ColumnElement, func, select, update
@@ -68,6 +69,19 @@ async def execute_run(
     a cancellation also closes it, then propagates.
     """
     sessionmaker = create_sessionmaker(engine)
+    async with user_run_lock(engine, user_id) as acquired:
+        if not acquired:
+            return None
+        return await _run(sessionmaker, user_id, trigger, pipeline, on_open)
+
+
+@asynccontextmanager
+async def user_run_lock(engine: AsyncEngine, user_id: uuid.UUID) -> AsyncIterator[bool]:
+    """Try (don't wait for) the user's run lock; yields whether it was taken.
+
+    Released on exit, also when the body raises. Used by runs and by company
+    deletes, so a delete never overlaps a run.
+    """
     async with engine.connect() as lock_conn:
         acquired = await lock_conn.scalar(
             select(func.pg_try_advisory_lock(_lock_key(user_id)))
@@ -75,9 +89,10 @@ async def execute_run(
         # End the implicit transaction; the lock outlives it.
         await lock_conn.commit()
         if not acquired:
-            return None
+            yield False
+            return
         try:
-            return await _run(sessionmaker, user_id, trigger, pipeline, on_open)
+            yield True
         finally:
             try:
                 await lock_conn.execute(

@@ -1132,7 +1132,7 @@ nullable (`ON DELETE SET NULL`). Groundwork for BE-056. Issue: #128.
 - `/runs/{id}/companies` shows the current name, or the stored one with
   `company_id: null` once the Company is gone
 
-### BE-056 · Delete a company
+### ~~BE-056 · Delete a company~~
 
 **Target:** backend **Version:** v1.0
 

@@ -70,7 +70,8 @@ Two services behind Nginx. Everything else is a module, not a deploy.
 - Write exactly one `RunCompanyResult` per company per run, whatever the outcome.
 - `Job.active` means "posting is still open". It is not a user dismiss flag.
   Pausing or resuming a company changes no job.
-- Jobs are never deleted (except by account deletion).
+- Jobs are never deleted, except by account deletion or by deleting their
+  Company (which takes the run lock and returns 409 during a run; ADR 0001).
 
 **Scoring**
 - Each scored job stores `profile_version`. Editing the profile bumps the

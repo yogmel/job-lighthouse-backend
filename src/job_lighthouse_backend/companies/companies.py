@@ -14,7 +14,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, HttpUrl, model_validator
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,8 @@ from job_lighthouse_backend.job_runner.company_run import (
     fetch_company,
     fetch_openings,
 )
+from job_lighthouse_backend.job_runner.models import Job
+from job_lighthouse_backend.job_runner.runs import user_run_lock
 
 from .models import Company
 from .sources import NonEmptyStr, Source
@@ -230,3 +232,39 @@ async def test_company(
     return SourceTestOut(
         status="ok", jobs_found=len({o.url for o in openings}), error=None
     )
+
+
+@router.delete(
+    "/{company_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Company not found"},
+        status.HTTP_409_CONFLICT: {"description": "A run is in progress"},
+    },
+)
+async def delete_company(
+    company_id: uuid.UUID, request: Request, user_id: CurrentUserId, session: Session
+) -> Response:
+    """Delete the company and all its jobs (ADR 0001).
+
+    - Another user's company is a 404, same as a missing one.
+    - Takes the user's run lock without waiting: 409 while a run holds it.
+    - Run history stays: breakdown rows keep the stored name, ``company_id``
+      becomes null.
+    """
+    company = await session.scalar(
+        select(Company).where(Company.id == company_id, Company.user_id == user_id)
+    )
+    if company is None:
+        raise _not_found()
+
+    async with user_run_lock(request.app.state.engine, user_id) as acquired:
+        if not acquired:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail="A run is in progress")
+        # Jobs first: the FK from jobs has no cascade.
+        await session.execute(
+            delete(Job).where(Job.company_id == company_id, Job.user_id == user_id)
+        )
+        await session.delete(company)
+        await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
