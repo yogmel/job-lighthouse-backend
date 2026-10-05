@@ -77,6 +77,7 @@ def test_next_cursor_header_is_exposed() -> None:
     response = client.get("/health", headers={"Origin": ALLOWED})
     exposed = response.headers["access-control-expose-headers"].lower()
     assert "x-next-cursor" in exposed
+    assert "x-total-count" in exposed
 
 
 @pytest.mark.parametrize(

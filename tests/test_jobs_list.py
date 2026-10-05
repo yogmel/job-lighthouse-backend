@@ -350,3 +350,58 @@ def test_bad_limit_or_cursor_is_422(runner_client, make_user, auth_header):
     ):
         resp = runner_client.get("/jobs", headers=headers, params=params)
         assert resp.status_code == 422, params
+
+
+# BE-057: total count on the first page.
+
+
+def _count(resp) -> str | None:
+    assert resp.status_code == 200, resp.text
+    return resp.headers.get("X-Total-Count")
+
+
+def test_total_count_counts_filtered_jobs_not_the_page(
+    runner_client, make_user, make_company, make_job, auth_header
+):
+    me, other = make_user(), make_user()
+    headers = auth_header(me["id"])
+    company = make_company(me["id"])
+    for i in range(3):
+        make_job(me["id"], company, date=T0 + timedelta(days=i))
+    make_job(me["id"], company, active=False, date=T0 - timedelta(days=1))
+    make_job(other["id"], make_company(other["id"]))
+
+    assert _count(runner_client.get("/jobs", headers=headers)) == "4"
+    assert (
+        _count(runner_client.get("/jobs", headers=headers, params={"limit": 1})) == "4"
+    )
+    assert (
+        _count(runner_client.get("/jobs", headers=headers, params={"active": "true"}))
+        == "3"
+    )
+    assert (
+        _count(
+            runner_client.get(
+                "/jobs", headers=headers, params={"company_id": str(uuid.uuid4())}
+            )
+        )
+        == "0"
+    )
+
+
+def test_total_count_absent_on_cursor_page(
+    runner_client, make_user, make_company, make_job, auth_header
+):
+    user = make_user()
+    headers = auth_header(user["id"])
+    company = make_company(user["id"])
+    for i in range(3):
+        make_job(user["id"], company, date=T0 + timedelta(days=i))
+
+    first = runner_client.get("/jobs", headers=headers, params={"limit": 1})
+    assert _count(first) == "3"
+    cursor = first.headers["X-Next-Cursor"]
+    second = runner_client.get(
+        "/jobs", headers=headers, params={"limit": 1, "cursor": cursor}
+    )
+    assert _count(second) is None

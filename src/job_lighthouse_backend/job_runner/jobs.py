@@ -5,7 +5,9 @@ Every query is scoped to the ``user_id`` in the JWT.
 Paged with a keyset cursor on ``(date, id)``, the list's sort order. Runs add
 jobs at the head of the list, so an offset would skip or repeat rows between
 pages; a cursor doesn't. The body stays a plain list: the next page's cursor
-comes in the ``X-Next-Cursor`` header, absent on the last page.
+comes in the ``X-Next-Cursor`` header, absent on the last page. The first page
+(no cursor) also carries ``X-Total-Count``, the number of jobs matching the
+filters; later pages skip the count.
 """
 
 import base64
@@ -16,7 +18,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select, tuple_
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_lighthouse_backend.common.auth import CurrentUserId
@@ -29,6 +31,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 
 NEXT_CURSOR_HEADER = "X-Next-Cursor"
+TOTAL_COUNT_HEADER = "X-Total-Count"
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
 
@@ -84,7 +87,12 @@ class JobOut(BaseModel):
                     "description": "Pass as `cursor` for the next page."
                     " Absent on the last page.",
                     "schema": {"type": "string"},
-                }
+                },
+                TOTAL_COUNT_HEADER: {
+                    "description": "Jobs matching the filters. Only when no"
+                    " `cursor` is given.",
+                    "schema": {"type": "integer"},
+                },
             }
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Bad cursor"},
@@ -106,7 +114,8 @@ async def list_jobs(
     closed postings are included. Another user's ``company_id`` matches
     nothing, so it returns ``[]``.
 
-    Keep the same filters when following ``X-Next-Cursor``.
+    Keep the same filters when following ``X-Next-Cursor``. Without a
+    ``cursor``, ``X-Total-Count`` is the number of jobs matching the filters.
     """
     query = (
         select(Job, Company.active.label("company_active"))
@@ -121,7 +130,12 @@ async def list_jobs(
         # Tier lives on the company, so filter through it (current tier,
         # not the tier at scrape time).
         query = query.where(Company.tier == tier)
-    if cursor is not None:
+    if cursor is None:
+        total = await session.scalar(
+            select(func.count()).select_from(query.order_by(None).subquery())
+        )
+        response.headers[TOTAL_COUNT_HEADER] = str(total)
+    else:
         try:
             after = decode_cursor(cursor)
         except ValueError:

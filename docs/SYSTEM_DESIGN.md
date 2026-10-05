@@ -381,7 +381,7 @@ location?: string;
 | `PUT`    | `/companies/{id}`             | modify company                                           |
 | `DELETE` | `/companies/{id}`             | delete the company and all its jobs in one transaction; `204`, no body. Run history stays (breakdown rows keep the stored name, `company_id: null`; [ADR 0001](adr/0001-company-delete-removes-its-jobs.md)). Takes the per-user run lock without waiting: `409 { detail: "A run is in progress" }` if it can't. `404` if missing or another user's |
 | `POST`   | `/companies/{id}/test`        | re-test a company's source; report reachability/count. `200 { status: "ok" \| "failed" \| "skipped", jobs_found, error }`; `ok` with `jobs_found: 0` is reachable-but-empty. Read-only: writes no jobs or run results |
-| `GET`    | `/jobs`                       | fetch jobs, newest first; `limit` (default 50, max 200) + keyset `cursor`, next page in the `X-Next-Cursor` header |
+| `GET`    | `/jobs`                       | fetch jobs, newest first; `limit` (default 50, max 200) + keyset `cursor`, next page in the `X-Next-Cursor` header. Without a `cursor`, an `X-Total-Count` header holds the number of jobs matching the filters; cursor pages omit it |
 | `GET`    | `/config`                     | fetch configuration                                      |
 | `PUT`    | `/config`                     | modify configuration                                     |
 | `POST`   | `/runs`                       | trigger a run now (manual); `202` with the `running` row, the run goes on in the background (`409` if one is in flight) |

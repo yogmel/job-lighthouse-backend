@@ -67,7 +67,7 @@ def create_app(title: str, background: Sequence[Background] = ()) -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
         # GET /jobs paging; the browser hides other custom headers cross-origin.
-        expose_headers=["X-Next-Cursor"],
+        expose_headers=["X-Next-Cursor", "X-Total-Count"],
         # The frontend sends a Bearer token, not cookies.
         allow_credentials=False,
     )
