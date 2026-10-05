@@ -65,10 +65,27 @@ def test_response_shape(runner_client, make_user, make_company, make_job, auth_h
             "date": body[0]["date"],
             "notified_at": None,
             "active": True,
+            "company_active": True,
         }
     ]
     assert datetime.fromisoformat(body[0]["date"]) == T0
     assert "user_id" not in body[0]
+
+
+def test_company_active_follows_the_company(
+    runner_client, make_user, make_company, make_job, auth_header, db
+):
+    user = make_user()
+    company = make_company(user["id"])
+    make_job(user["id"], company)
+    headers = auth_header(user["id"])
+
+    assert runner_client.get("/jobs", headers=headers).json()[0]["company_active"]
+
+    db.execute("UPDATE companies SET active = false WHERE id = %s", (company,))
+    (item,) = runner_client.get("/jobs", headers=headers).json()
+    assert item["company_active"] is False
+    assert item["active"] is True
 
 
 def test_filter_active(runner_client, make_user, make_company, make_job, auth_header):

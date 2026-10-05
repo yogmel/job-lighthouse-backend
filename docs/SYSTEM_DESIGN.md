@@ -218,25 +218,25 @@ notified_at: Date | null; // null = not yet included in a sent digest
 active: boolean; // posting is still live — see below
 ```
 
-`company_id` is the real link — the cascade, step 5's diff, and the dashboard's
-company filter all key on it, so renaming a company can't orphan its jobs.
-`company` is a copy of the name at scrape time, carried so `GET /jobs` renders
-without a join; it may drift after a rename and is display-only.
+`GET /jobs` items add `company_active: boolean`: whether the job's company is
+currently active (not paused). It is computed from `Companies.active` on each
+request and is not stored on the job.
+
+`company_id` is the real link — step 5's diff and the dashboard's
+company filter both key on it, so renaming a company can't orphan its jobs.
+`company` is a copy of the name at scrape time, carried so `GET /jobs` can show it
+without reading the company; it may drift after a rename and is display-only.
 
 `Job.active` means **the posting is still open**. It is not a user-dismissal flag.
 
 - The runner flips it to `false` when a job it previously stored no longer appears
   in the company's current openings.
-- Deactivating a company (`Companies.active = false`) cascades: all of that
-  company's jobs are set to `active = false`.
-- Reactivating a company does **not** restore its jobs. They stay `false` until
-  the next run re-confirms them as open.
+- Pausing or resuming a company (`Companies.active`) changes no job. A paused
+  company isn't fetched, so its jobs keep whatever state they had; the next run
+  after a resume closes or reopens them as usual. The dashboard marks jobs of
+  paused companies using `company_active`.
 - Jobs are never deleted; inactive rows stay as history and are hidden from the
   dashboard's default view.
-
-> Known conflation, accepted for now: the company cascade sets `active = false`
-> on postings that may still be live. Fine while the dashboard only filters on
-> this flag; revisit if "posting closed" ever needs to be a distinct signal.
 
 **No content diffing.** If a company edits a live job's title or description
 in place without changing its URL, it is never re-detected or re-scored —
@@ -632,8 +632,9 @@ deliverability, which SMTP-through-an-app-password doesn't guarantee.
 
 **Digest contents and the missed-send guarantee:**
 
-- The digest is every job where `active = true AND notified_at IS NULL` — not
-  "jobs inserted this run".
+- The digest is every job where `active = true AND notified_at IS NULL` and
+  whose company isn't paused — not "jobs inserted this run". A paused
+  company's unsent jobs wait and go out in the first digest after it resumes.
 - **No email is sent when that set is empty.**
 - `notified_at` is stamped only after the provider confirms success.
 

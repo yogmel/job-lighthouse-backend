@@ -14,7 +14,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, HttpUrl, model_validator
-from sqlalchemy import column, select, table, update
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,9 +56,6 @@ router = APIRouter(
 )
 
 Session = Annotated[AsyncSession, Depends(get_session)]
-
-# Owned by the Job Runner; only pausing writes to it from here.
-_jobs = table("jobs", column("user_id"), column("company_id"), column("active"))
 
 
 class CompanyOut(BaseModel):
@@ -187,8 +184,7 @@ async def update_company(
     """Change any of name, tier, website_url, active, source.
 
     - Another user's company is a 404, same as a missing one.
-    - Pausing (``active: false``) also sets the company's jobs inactive.
-      Resuming (``active: true``) does not restore them.
+    - Pausing or resuming (``active``) changes no job.
     """
     company = await session.scalar(
         select(Company).where(Company.id == company_id, Company.user_id == user_id)
@@ -199,13 +195,6 @@ async def update_company(
     changes = body.model_dump(mode="json", exclude_unset=True)
     for field, value in changes.items():
         setattr(company, field, value)
-
-    if changes.get("active") is False:
-        await session.execute(
-            update(_jobs)
-            .where(_jobs.c.company_id == company_id, _jobs.c.user_id == user_id)
-            .values(active=False)
-        )
 
     await session.commit()
     return CompanyOut.model_validate(company)

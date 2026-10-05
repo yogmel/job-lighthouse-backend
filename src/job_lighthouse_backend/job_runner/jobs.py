@@ -70,6 +70,8 @@ class JobOut(BaseModel):
     date: datetime
     notified_at: datetime | None
     active: bool
+    # The company's current state, not stored on the job.
+    company_active: bool
 
 
 @router.get(
@@ -106,7 +108,11 @@ async def list_jobs(
 
     Keep the same filters when following ``X-Next-Cursor``.
     """
-    query = select(Job).where(Job.user_id == user_id)
+    query = (
+        select(Job, Company.active.label("company_active"))
+        .join(Company, Job.company_id == Company.id)
+        .where(Job.user_id == user_id, Company.user_id == user_id)
+    )
     if active is not None:
         query = query.where(Job.active == active)
     if company_id is not None:
@@ -114,9 +120,7 @@ async def list_jobs(
     if tier is not None:
         # Tier lives on the company, so filter through it (current tier,
         # not the tier at scrape time).
-        query = query.join(Company, Job.company_id == Company.id).where(
-            Company.user_id == user_id, Company.tier == tier
-        )
+        query = query.where(Company.tier == tier)
     if cursor is not None:
         try:
             after = decode_cursor(cursor)
@@ -127,12 +131,22 @@ async def list_jobs(
         query = query.where(tuple_(Job.date, Job.id) < after)
     # One extra row tells whether another page exists, without a count.
     rows = (
-        await session.scalars(
+        await session.execute(
             query.order_by(Job.date.desc(), Job.id.desc()).limit(limit + 1)
         )
     ).all()
     page = rows[:limit]
     if len(rows) > limit:
-        last = page[-1]
+        last = page[-1].Job
         response.headers[NEXT_CURSOR_HEADER] = encode_cursor(last.date, last.id)
-    return [JobOut.model_validate(j) for j in page]
+    return [
+        JobOut(
+            **{
+                name: getattr(job, name)
+                for name in JobOut.model_fields
+                if name != "company_active"
+            },
+            company_active=company_active,
+        )
+        for job, company_active in page
+    ]
