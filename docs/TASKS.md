@@ -1174,7 +1174,7 @@ job-lighthouse-frontend#44.
 
 ## v1.1 — Company and run controls
 
-### BE-057 · Total job count on the first page of GET /jobs
+### ~~BE-057 · Total job count on the first page of GET /jobs~~
 
 **Target:** backend **Version:** v1.1
 
