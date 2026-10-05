@@ -138,7 +138,7 @@ def test_put_validation(runner_client, make_user, auth_header):
         assert resp.status_code == 422, body
 
 
-def test_deleted_account_is_404(runner_client, auth_header):
+def test_deleted_account_is_401(runner_client, auth_header):
     headers = auth_header(uuid.uuid4())
-    assert runner_client.get("/config", headers=headers).status_code == 404
-    assert runner_client.put("/config", headers=headers, json=BODY).status_code == 404
+    assert runner_client.get("/config", headers=headers).status_code == 401
+    assert runner_client.put("/config", headers=headers, json=BODY).status_code == 401

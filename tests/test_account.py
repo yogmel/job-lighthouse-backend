@@ -50,13 +50,13 @@ def test_requires_token(companies_client: TestClient):
     assert resp.status_code == 401
 
 
-def test_nonexistent_user_is_404(companies_client, auth_header):
+def test_nonexistent_user_is_401(companies_client, auth_header):
     headers = auth_header(uuid.uuid4())
-    assert companies_client.get("/account", headers=headers).status_code == 404
+    assert companies_client.get("/account", headers=headers).status_code == 401
     resp = companies_client.put(
         "/account", headers=headers, json={"new_password": NEW_PASSWORD}
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 401
 
 
 def test_change_password_with_current_password(

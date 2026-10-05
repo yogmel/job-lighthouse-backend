@@ -65,6 +65,6 @@ Source = Annotated[
     BoardSource | ScraperSource | CustomSource, Field(discriminator="kind")
 ]
 
-# What a user may set by hand. `custom` needs a handler shipped in code
-# first, so it can't be created from the API yet (v0.10).
-ManualSource = Annotated[BoardSource | ScraperSource, Field(discriminator="kind")]
+# What detection can find. It never yields `custom`: a handler is code a
+# developer writes later.
+DetectedSource = Annotated[BoardSource | ScraperSource, Field(discriminator="kind")]

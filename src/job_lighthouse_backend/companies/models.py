@@ -47,3 +47,18 @@ class Company(Base):
     active: Mapped[bool] = mapped_column(server_default="true")
     # Discriminated union on `kind`, validated by ``sources.Source``.
     source: Mapped[dict[str, Any]] = mapped_column(JSONB)
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, server_default=func.gen_random_uuid()
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    # SHA-256 of the raw token. The raw token is only ever in the email.
+    token_hash: Mapped[str] = mapped_column(Text, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

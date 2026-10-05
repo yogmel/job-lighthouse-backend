@@ -891,7 +891,7 @@ Next run estimate, today's totals, run history, per-company breakdown.
 
 ## v0.10 — Custom handler escape hatch
 
-### BE-039 · Source.kind: "custom" support
+### ~~BE-039 · Source.kind: "custom" support~~
 
 **Target:** backend **Version:** v0.10
 
@@ -902,7 +902,7 @@ Extend the `Source` union/validation to accept `{kind: "custom", handler}`.
 - `POST`/`PUT /companies` accept a `custom` source (previously rejected in
   BE-017)
 
-### BE-040 · Pipeline support for custom handlers
+### ~~BE-040 · Pipeline support for custom handlers~~
 
 **Target:** backend **Version:** v0.10
 
@@ -932,7 +932,7 @@ no handler yet.
 
 ## v0.11 — Account completeness
 
-### BE-041 · POST /auth/password-reset/request
+### ~~BE-041 · POST /auth/password-reset/request~~
 
 **Target:** backend **Version:** v0.11
 
@@ -943,7 +943,7 @@ Issue a `PasswordResetToken`, email the reset link.
 - Unknown email still returns a generic success response (no enumeration)
 - Token stored hashed, never the raw value
 
-### BE-042 · POST /auth/password-reset/confirm
+### ~~BE-042 · POST /auth/password-reset/confirm~~
 
 **Target:** backend **Version:** v0.11
 
@@ -954,7 +954,7 @@ Verify token, set new password, mark token used.
 - Expired or already-used token is rejected
 - Token can't be reused after a successful confirm
 
-### BE-043 · GET /account/export
+### ~~BE-043 · GET /account/export~~
 
 **Target:** backend **Version:** v0.11
 
@@ -965,7 +965,7 @@ JSON export of all rows owned by the requesting user across every table.
 - Export includes Config, Companies, Jobs, Runs, RunCompanyResults for that
   user only
 
-### BE-044 · DELETE /account
+### ~~BE-044 · DELETE /account~~
 
 **Target:** backend **Version:** v0.11
 

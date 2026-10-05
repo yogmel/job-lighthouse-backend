@@ -73,7 +73,7 @@ def test_returns_every_source_kind_and_paused(
     }
 
 
-def test_unknown_user_gets_empty_list(companies_client, auth_header):
+def test_unknown_user_is_401(companies_client, auth_header):
+    # BE-044: a token whose user is gone (e.g. deleted) no longer works.
     resp = companies_client.get("/companies", headers=auth_header(uuid.uuid4()))
-    assert resp.status_code == 200
-    assert resp.json() == []
+    assert resp.status_code == 401

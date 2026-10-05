@@ -132,10 +132,27 @@ def test_missing_company_is_404(companies_client, make_user, auth_header):
     assert resp.status_code == 404
 
 
+def test_switch_to_custom_source(
+    companies_client, make_user, make_company, auth_header, db
+):
+    # BE-039: e.g. detection fell through; park it paused until a handler ships.
+    source = {"kind": "custom", "handler": "scrape_google"}
+    user = make_user()
+    company_id = make_company(user["id"])
+    resp = companies_client.put(
+        f"/companies/{company_id}",
+        headers=auth_header(user["id"]),
+        json={"source": source, "active": False},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["source"] == source
+    assert _stored(db, company_id)[3:] == (False, source)
+
+
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param({"kind": "custom", "handler": "scrape_google"}, id="custom"),
+        pytest.param({"kind": "custom"}, id="custom-no-handler"),
         pytest.param({"kind": "board", "board": "lever"}, id="missing-board-id"),
         pytest.param({"kind": "rss"}, id="unknown-kind"),
     ],

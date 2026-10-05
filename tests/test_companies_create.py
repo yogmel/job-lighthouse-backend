@@ -83,11 +83,28 @@ def test_create_scraper_company_paused(companies_client, make_user, auth_header,
     assert (tier, active, source) == (3, False, SCRAPER_SOURCE)
 
 
+def test_create_custom_company_paused(companies_client, make_user, auth_header, db):
+    # BE-039: no handler is shipped under this name yet; that's allowed.
+    source = {"kind": "custom", "handler": "scrape_google"}
+    user = make_user()
+    resp = companies_client.post(
+        "/companies",
+        headers=auth_header(user["id"]),
+        json=_payload(name="Google", active=False, source=source),
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert (body["active"], body["source"]) == (False, source)
+    _, _, _, _, active, stored = _stored(db, body["id"])
+    assert (active, stored) == (False, source)
+
+
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param({"kind": "custom", "handler": "scrape_google"}, id="custom"),
         pytest.param({"kind": "rss", "url": "https://x.com/feed"}, id="unknown-kind"),
+        pytest.param({"kind": "custom"}, id="custom-no-handler"),
+        pytest.param({"kind": "custom", "handler": " "}, id="custom-blank-handler"),
         pytest.param({"board": "lever", "board_id": "x"}, id="no-kind"),
         pytest.param({"kind": "board", "board": "lever"}, id="missing-board-id"),
         pytest.param(
@@ -153,8 +170,8 @@ def test_other_field_errors_stay_422(
     assert resp.status_code == 422
 
 
-def test_deleted_user_is_404(companies_client, auth_header):
+def test_deleted_user_is_401(companies_client, auth_header):
     resp = companies_client.post(
         "/companies", headers=auth_header(uuid.uuid4()), json=_payload()
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 401
