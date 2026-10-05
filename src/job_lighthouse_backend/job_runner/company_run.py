@@ -77,6 +77,7 @@ async def run_company(
         RunCompanyResult(
             run_id=run_id,
             company_id=company.id,
+            company_name=company.name,
             status=outcome.status,
             jobs_found=outcome.jobs_found,
             error=outcome.error,

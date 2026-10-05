@@ -15,7 +15,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import State
@@ -182,8 +182,9 @@ async def list_runs(
 
 class RunCompanyResultOut(BaseModel):
     id: uuid.UUID
-    company_id: uuid.UUID
-    # Current name, not the name at run time.
+    # Null once the Company is deleted.
+    company_id: uuid.UUID | None
+    # Current name while the Company exists, else the name it ran with.
     company: str
     status: Literal["ok", "failed", "skipped"]
     jobs_found: int
@@ -200,6 +201,9 @@ async def list_run_companies(
 ) -> list[RunCompanyResultOut]:
     """One row per company the run processed, ordered by company name.
 
+    ``company`` is the current name while the Company exists, else the name
+    it ran with, and ``company_id`` is ``null`` once it's gone.
+
     404 if the run doesn't exist or belongs to another user. A run still
     ``running`` returns the companies done so far.
     """
@@ -208,11 +212,12 @@ async def list_run_companies(
     )
     if owned is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Run not found")
+    name = func.coalesce(Company.name, RunCompanyResult.company_name)
     rows = await session.execute(
-        select(RunCompanyResult, Company.name)
-        .join(Company, RunCompanyResult.company_id == Company.id)
-        .where(RunCompanyResult.run_id == run_id, Company.user_id == user_id)
-        .order_by(Company.name, RunCompanyResult.id)
+        select(RunCompanyResult, name)
+        .outerjoin(Company, RunCompanyResult.company_id == Company.id)
+        .where(RunCompanyResult.run_id == run_id)
+        .order_by(name, RunCompanyResult.id)
     )
     return [
         RunCompanyResultOut.model_validate(

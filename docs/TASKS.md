@@ -1119,7 +1119,7 @@ Digest. `GET /jobs` items gain `company_active`. Spec: #126. Issue: #127.
 - Digest = open, unsent Jobs whose Company isn't paused
 - `GET /jobs` items include `company_active: bool`
 
-### BE-055 · Run breakdown keeps the company name it ran with
+### ~~BE-055 · Run breakdown keeps the company name it ran with~~
 
 **Target:** backend **Version:** v1.0
 

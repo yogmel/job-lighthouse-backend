@@ -30,9 +30,10 @@ def _make_result(
 ) -> uuid.UUID:
     row = db.execute(
         "INSERT INTO run_company_results"
-        " (run_id, company_id, status, jobs_found, error)"
-        " VALUES (%s, %s, %s, %s, %s) RETURNING id",
-        (run_id, company_id, status, jobs_found, error),
+        " (run_id, company_id, company_name, status, jobs_found, error)"
+        " VALUES (%s, %s, (SELECT name FROM companies WHERE id = %s), %s, %s, %s)"
+        " RETURNING id",
+        (run_id, company_id, company_id, status, jobs_found, error),
     ).fetchone()
     assert row is not None
     return row[0]
@@ -118,3 +119,39 @@ def test_bad_run_id_is_422(runner_client, make_user, auth_header):
         "/runs/not-a-uuid/companies", headers=auth_header(user["id"])
     )
     assert resp.status_code == 422
+
+
+def test_renamed_company_shows_current_name(
+    runner_client, db, make_user, make_company, auth_header
+):
+    user = make_user()
+    company = make_company(user["id"], name="Old Name")
+    run = _make_run(db, user["id"])
+    _make_result(db, run, company)
+    db.execute("UPDATE companies SET name = 'New Name' WHERE id = %s", (company,))
+
+    resp = runner_client.get(f"/runs/{run}/companies", headers=auth_header(user["id"]))
+    assert resp.status_code == 200, resp.text
+    [item] = resp.json()
+    assert item["company"] == "New Name"
+    assert item["company_id"] == str(company)
+
+
+def test_deleted_company_shows_stored_name(
+    runner_client, db, make_user, make_company, auth_header
+):
+    user = make_user()
+    gone = make_company(user["id"], name="Gone Inc")
+    kept = make_company(user["id"], name="Kept")
+    run = _make_run(db, user["id"])
+    _make_result(db, run, gone)
+    _make_result(db, run, kept)
+    db.execute("DELETE FROM companies WHERE id = %s", (gone,))
+
+    resp = runner_client.get(f"/runs/{run}/companies", headers=auth_header(user["id"]))
+    assert resp.status_code == 200, resp.text
+    items = resp.json()
+    assert [(i["company"], i["company_id"]) for i in items] == [
+        ("Gone Inc", None),
+        ("Kept", str(kept)),
+    ]

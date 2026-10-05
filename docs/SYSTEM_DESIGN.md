@@ -279,7 +279,8 @@ from a quiet day.
 ```ts
 id: string;
 run_id: string; // FK -> Runs.id
-company_id: string; // FK -> Companies.id
+company_id: string | null; // FK -> Companies.id, ON DELETE SET NULL
+company_name: string; // Company name when the row was written
 status: "ok" | "failed" | "skipped";
 jobs_found: number;
 error: string | null;
@@ -290,6 +291,10 @@ distinguish that from "Northstar: fetch failed" — `Job` rows alone can't
 encode a company that was fetched successfully and genuinely found nothing.
 One row per company per run; the Companies list's per-row flag and the Runs
 screen's per-company breakdown both read from here.
+
+`company_name` is copied when the row is written, and `company_id` is nulled
+when the Company is deleted (BE-056), so run history stays readable after the
+Company is gone (ADR 0001).
 
 ### Source
 
@@ -378,7 +383,7 @@ location?: string;
 | `PUT`    | `/config`                     | modify configuration                                     |
 | `POST`   | `/runs`                       | trigger a run now (manual); `202` with the `running` row, the run goes on in the background (`409` if one is in flight) |
 | `GET`    | `/runs`                       | run history for the dashboard, most recent first; `limit` (default 50, max 200) |
-| `GET`    | `/runs/{id}/companies`        | per-company breakdown for one run (`RunCompanyResult` + current company name), ordered by name; `404` if the run isn't the caller's |
+| `GET`    | `/runs/{id}/companies`        | per-company breakdown for one run (`RunCompanyResult`); `company` is the current name while the Company exists, else the stored `company_name`, and `company_id` is `null` once it's gone; ordered by that name; `404` if the run isn't the caller's |
 
 ### Add-company detection shapes
 

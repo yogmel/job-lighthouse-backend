@@ -34,8 +34,8 @@ def _seed(db: psycopg.Connection, make_company, make_job, user_id) -> uuid.UUID:
     ).fetchone()
     assert run is not None
     db.execute(
-        "INSERT INTO run_company_results (run_id, company_id, status)"
-        " VALUES (%s, %s, 'ok')",
+        "INSERT INTO run_company_results (run_id, company_id, company_name, status)"
+        " VALUES (%s, %s, 'Stripe', 'ok')",
         (run[0], company_id),
     )
     db.execute(
