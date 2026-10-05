@@ -134,12 +134,30 @@ def test_inactive_jobs_are_excluded(db, make_user, make_company, make_job):
 def test_jobs_of_paused_companies_are_excluded(db, make_user, make_company, make_job):
     user = make_user()
     company = make_company(user["id"], active=False)
-    # Pausing a company sets its jobs inactive.
-    make_job(user["id"], company, title="Job Paused", active=False)
+    make_job(user["id"], company, title="Job Paused")
     mailer = FakeMailer()
 
     _run(db, user["id"], mailer=mailer)
     assert mailer.sent == []
+    assert _notified(db, user["id"]) == {"Job Paused": False}
+
+
+@needs_db
+def test_resumed_company_jobs_go_out_in_next_digest(
+    db, make_user, make_company, make_job
+):
+    user = make_user()
+    company = make_company(user["id"], active=False)
+    make_job(user["id"], company, title="Job Waiting")
+    mailer = FakeMailer()
+
+    _run(db, user["id"], mailer=mailer)
+    assert mailer.sent == []
+
+    db.execute("UPDATE companies SET active = true WHERE id = %s", (company,))
+    _run(db, user["id"], mailer=mailer)
+    assert _titles(mailer.sent[0]) == ["Job Waiting"]
+    assert _notified(db, user["id"]) == {"Job Waiting": True}
 
 
 @needs_db

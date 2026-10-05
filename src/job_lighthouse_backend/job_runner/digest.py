@@ -1,8 +1,9 @@
 """Pipeline step 8: the digest email.
 
 - The digest is every job of the user with ``active = true AND notified_at IS
-  NULL``, not "jobs from this run". A missed digest heals itself: the next
-  one carries its jobs too.
+  NULL`` whose company isn't paused, not "jobs from this run". A missed
+  digest heals itself: the next one carries its jobs too. Jobs of a paused
+  company wait and go out in the first digest after it resumes.
 - No email when that set is empty.
 - ``notified_at`` is stamped only after the provider confirms the send, and
   only on the jobs that were in it.
@@ -22,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_lighthouse_backend.common.email import Email, Mailer
 
-from .models import Job, User
+from .models import Company, Job, User
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +36,10 @@ async def send_digest(session: AsyncSession, user_id: uuid.UUID, mailer: Mailer)
     jobs = (
         await session.scalars(
             select(Job)
+            .join(Company, Job.company_id == Company.id)
             .where(
                 Job.user_id == user_id,
+                Company.active.is_(True),
                 Job.active.is_(True),
                 Job.notified_at.is_(None),
             )

@@ -32,12 +32,22 @@ def _stored(db: psycopg.Connection, company_id: uuid.UUID) -> tuple:
     return row
 
 
-def _add_job(db: psycopg.Connection, user_id: uuid.UUID, company_id: uuid.UUID):
+def _add_job(
+    db: psycopg.Connection,
+    user_id: uuid.UUID,
+    company_id: uuid.UUID,
+    active: bool = True,
+):
     row = db.execute(
         "INSERT INTO jobs (user_id, company_id, company, title, url, location,"
-        " description) VALUES (%s, %s, 'Stripe', 'Engineer', %s, 'Remote', '')"
-        " RETURNING id",
-        (user_id, company_id, f"https://example.com/jobs/{uuid.uuid4().hex}"),
+        " description, active) VALUES (%s, %s, 'Stripe', 'Engineer', %s, 'Remote',"
+        " '', %s) RETURNING id",
+        (
+            user_id,
+            company_id,
+            f"https://example.com/jobs/{uuid.uuid4().hex}",
+            active,
+        ),
     ).fetchone()
     assert row is not None
     return row[0]
@@ -202,30 +212,23 @@ def test_bad_id_is_422(companies_client, make_user, auth_header):
     assert resp.status_code == 422
 
 
-def test_pause_closes_jobs_and_resume_keeps_them_closed(
+def test_pause_and_resume_leave_jobs_alone(
     companies_client, make_user, make_company, auth_header, db
 ):
     user = make_user()
     company_id = make_company(user["id"])
-    other_company_id = make_company(user["id"], name="Other")
-    job = _add_job(db, user["id"], company_id)
-    other_job = _add_job(db, user["id"], other_company_id)
+    open_job = _add_job(db, user["id"], company_id)
+    closed_job = _add_job(db, user["id"], company_id, active=False)
     headers = auth_header(user["id"])
 
-    resp = companies_client.put(
-        f"/companies/{company_id}", headers=headers, json={"active": False}
-    )
-    assert resp.status_code == 200
-    assert resp.json()["active"] is False
-    assert _job_active(db, job) is False
-    assert _job_active(db, other_job) is True
-
-    resp = companies_client.put(
-        f"/companies/{company_id}", headers=headers, json={"active": True}
-    )
-    assert resp.status_code == 200
-    assert resp.json()["active"] is True
-    assert _job_active(db, job) is False
+    for active in (False, True):
+        resp = companies_client.put(
+            f"/companies/{company_id}", headers=headers, json={"active": active}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["active"] is active
+        assert _job_active(db, open_job) is True
+        assert _job_active(db, closed_job) is False
 
 
 def test_non_pause_edit_leaves_jobs_alone(

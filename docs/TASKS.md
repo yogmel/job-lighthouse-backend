@@ -1105,7 +1105,7 @@ the tickets from spec #126 mirrored here. Issue: #132.
 
 - Files on `main`; this file and `VERSIONING.md` match the published issues
 
-### BE-054 · Pausing a company leaves its jobs alone
+### ~~BE-054 · Pausing a company leaves its jobs alone~~
 
 **Target:** backend **Version:** v1.0
 

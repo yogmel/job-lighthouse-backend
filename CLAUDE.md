@@ -69,7 +69,7 @@ Two services behind Nginx. Everything else is a module, not a deploy.
   - `custom`: only when the handler reports success
 - Write exactly one `RunCompanyResult` per company per run, whatever the outcome.
 - `Job.active` means "posting is still open". It is not a user dismiss flag.
-  Pausing a company sets its jobs inactive; resuming does **not** restore them.
+  Pausing or resuming a company changes no job.
 - Jobs are never deleted (except by account deletion).
 
 **Scoring**
@@ -78,8 +78,8 @@ Two services behind Nginx. Everything else is a module, not a deploy.
 - No history of past profile texts.
 
 **Notifications**
-- Digest = all jobs with `active = true AND notified_at IS NULL`, not "jobs
-  from this run".
+- Digest = all jobs with `active = true AND notified_at IS NULL` whose company
+  isn't paused, not "jobs from this run".
 - Send nothing when that set is empty.
 - Stamp `notified_at` only after the provider confirms success.
 - Email is sent inline. No queue, worker, or outbox.
