@@ -103,7 +103,12 @@ class RunCompanyResult(Base):
         primary_key=True, server_default=func.gen_random_uuid()
     )
     run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"))
-    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"))
+    # Null once the Company is deleted; the row stays as run history.
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("companies.id", ondelete="SET NULL")
+    )
+    # Company name when the row was written, so the breakdown outlives the Company.
+    company_name: Mapped[str] = mapped_column(Text)
     # "ok" | "failed" | "skipped"
     status: Mapped[str] = mapped_column(Text)
     jobs_found: Mapped[int] = mapped_column(server_default="0")

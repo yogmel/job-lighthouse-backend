@@ -287,3 +287,16 @@ def test_fetch_custom_without_handler_raises():
 def test_outcome_defaults(status):
     outcome = CompanyOutcome(status)
     assert (outcome.jobs_found, outcome.new_job_ids, outcome.error) == (0, (), None)
+
+
+def test_result_stores_company_name(db, make_user, make_company):
+    user = make_user()
+    company = make_company(user["id"], name="Acme Corp")
+    run = _open_run(db, user["id"])
+
+    _process(run, [company], lambda source: [])
+
+    row = db.execute(
+        "SELECT company_name FROM run_company_results WHERE run_id = %s", (run,)
+    ).fetchone()
+    assert row == ("Acme Corp",)

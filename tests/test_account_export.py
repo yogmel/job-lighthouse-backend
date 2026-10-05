@@ -26,8 +26,9 @@ def _seed(db: psycopg.Connection, make_company, make_job, user_id) -> dict:
     ).fetchone()
     assert run is not None
     result = db.execute(
-        "INSERT INTO run_company_results (run_id, company_id, status, jobs_found)"
-        " VALUES (%s, %s, 'ok', 1) RETURNING id",
+        "INSERT INTO run_company_results"
+        " (run_id, company_id, company_name, status, jobs_found)"
+        " VALUES (%s, %s, 'Stripe', 'ok', 1) RETURNING id",
         (run[0], company_id),
     ).fetchone()
     assert result is not None
