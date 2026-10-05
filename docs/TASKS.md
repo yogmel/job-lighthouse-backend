@@ -807,8 +807,9 @@ render) isn't cancelled when the budget runs out.
 
 **Acceptance criteria:**
 
-- Decide from real timings whether the budget is too tight (e.g. log how
-  long detects take and how often they time out)
+- ~~Decide from real timings whether the budget is too tight (e.g. log how
+  long detects take and how often they time out)~~ Logging is in; the
+  decision waits for production timings.
 - If it is: raise `proxy_read_timeout` for `/companies/detect` only, raise
   `DETECT_BUDGET_SECONDS` to stay under it, and check the frontend's own
   request timeout allows it
