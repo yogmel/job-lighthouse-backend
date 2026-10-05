@@ -8,7 +8,7 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
@@ -39,6 +39,9 @@ class ConfigOut(BaseModel):
     cron: str
     profile: str
     profile_version: int
+    notify_email: bool
+    notify_empty_company: bool
+    notify_min_score: int
 
 
 class ConfigIn(BaseModel):
@@ -54,6 +57,9 @@ class ConfigIn(BaseModel):
     cron: NonEmptyStr
     # Markdown. Empty means "don't score".
     profile: str
+    notify_email: bool
+    notify_empty_company: bool
+    notify_min_score: Annotated[int, Field(ge=0, le=100)]
 
 
 def _account_not_found() -> HTTPException:

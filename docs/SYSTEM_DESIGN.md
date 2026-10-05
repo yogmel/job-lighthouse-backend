@@ -179,6 +179,9 @@ location: string;
 cron: Cron;
 profile: string; // markdown, replaces docs/PROFILE.md
 profile_version: number; // bumped on every profile edit
+notify_email: boolean; // default true: digest on/off
+notify_empty_company: boolean; // default true: warn when a company returns nothing (stored only)
+notify_min_score: number; // 0-100, default 40: digest carries only jobs scoring above it
 ```
 
 `keywords_include`/`keywords_exclude` replace the single `keywords_filter`
@@ -514,13 +517,15 @@ backend code on `main` as of BE-011 – BE-015.
 | Endpoint      | Request body                                                           | Success      |
 | ------------- | ---------------------------------------------------------------------- | ------------ |
 | `GET /config` | none                                                                   | `200 Config` |
-| `PUT /config` | `{ keywords_include, keywords_exclude, location, cron, profile }` (all required) | `200 Config` |
+| `PUT /config` | `{ keywords_include, keywords_exclude, location, cron, profile, notify_email, notify_empty_company, notify_min_score }` (all required) | `200 Config` |
 
 - `Config` is the full [Config](#config) row.
 - The row is created with defaults on the first `GET` or `PUT`: empty
-  keywords, location and profile, `cron: "0 7 * * *"`, `profile_version: 1`.
+  keywords, location and profile, `cron: "0 7 * * *"`, `profile_version: 1`,
+  `notify_email: true`, `notify_empty_company: true`, `notify_min_score: 40`.
 - `PUT` replaces every editable field. `profile_version` is server-owned and
-  goes up by one only when `profile` actually changes.
+  goes up by one only when `profile` actually changes. `notify_min_score`
+  outside 0–100 is a `422`.
 
 ---
 
@@ -652,7 +657,15 @@ deliverability, which SMTP-through-an-app-password doesn't guarantee.
 - The digest is every job where `active = true AND notified_at IS NULL` and
   whose company isn't paused — not "jobs inserted this run". A paused
   company's unsent jobs wait and go out in the first digest after it resumes.
-- **No email is sent when that set is empty.**
+- **No email is sent when that set is empty**, or when `Config.notify_email`
+  is `false`.
+- Jobs scoring **at or below** `Config.notify_min_score` are left out. They
+  stay on the board (`GET /jobs`). **Unscored jobs (`match_score` null) are
+  included**: with no profile there is no score to judge by.
+- **Left-out jobs are not stamped** `notified_at`. They stay in the unsent
+  set, so lowering the threshold sends them in the next digest. The cost is a
+  few permanently pending rows, which is harmless.
+- `notify_empty_company` is stored only; no empty-company warning is sent yet.
 - `notified_at` is stamped only after the provider confirms success.
 
 That makes missed digests self-healing: if Tuesday's send fails, Wednesday's

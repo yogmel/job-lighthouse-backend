@@ -14,6 +14,9 @@ BODY = {
     "location": "Berlin",
     "cron": "0 8 * * 1-5",
     "profile": "# Profile\nBackend engineer.",
+    "notify_email": True,
+    "notify_empty_company": True,
+    "notify_min_score": 40,
 }
 
 
@@ -44,6 +47,9 @@ def test_get_creates_defaults_once(runner_client, make_user, auth_header, db):
         "cron": "0 7 * * *",
         "profile": "",
         "profile_version": 1,
+        "notify_email": True,
+        "notify_empty_company": True,
+        "notify_min_score": 40,
     }
     assert runner_client.get("/config", headers=headers).json() == body
     count = db.execute(
@@ -133,6 +139,10 @@ def test_put_validation(runner_client, make_user, auth_header):
         {**BODY, "cron": "  "},
         {**BODY, "keywords_exclude": [""]},
         {**BODY, "keywords_include": "backend"},
+        {**BODY, "notify_min_score": -1},
+        {**BODY, "notify_min_score": 101},
+        {**BODY, "notify_email": "maybe"},
+        {k: v for k, v in BODY.items() if k != "notify_email"},
     ):
         resp = runner_client.put("/config", headers=headers, json=body)
         assert resp.status_code == 422, body
@@ -142,3 +152,15 @@ def test_deleted_account_is_401(runner_client, auth_header):
     headers = auth_header(uuid.uuid4())
     assert runner_client.get("/config", headers=headers).status_code == 401
     assert runner_client.put("/config", headers=headers, json=BODY).status_code == 401
+
+
+def test_put_stores_notification_prefs(runner_client, make_user, auth_header):
+    headers = auth_header(make_user()["id"])
+    prefs = {
+        "notify_email": False,
+        "notify_empty_company": False,
+        "notify_min_score": 0,
+    }
+    assert _put(runner_client, headers, **prefs).items() >= prefs.items()
+    assert runner_client.get("/config", headers=headers).json().items() >= prefs.items()
+    assert _put(runner_client, headers, notify_min_score=100)["notify_min_score"] == 100

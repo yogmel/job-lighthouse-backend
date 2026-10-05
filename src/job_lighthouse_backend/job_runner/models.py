@@ -44,6 +44,12 @@ class Config(Base):
     profile: Mapped[str] = mapped_column(Text, server_default="")
     # Bumped on every profile edit. No history of past texts is kept.
     profile_version: Mapped[int] = mapped_column(server_default="1")
+    # Digest on/off.
+    notify_email: Mapped[bool] = mapped_column(server_default="true")
+    # Warn when a company returns nothing. Stored only; nothing sends it yet.
+    notify_empty_company: Mapped[bool] = mapped_column(server_default="true")
+    # The digest carries only jobs scoring above this (0-100).
+    notify_min_score: Mapped[int] = mapped_column(server_default="40")
 
 
 class Job(Base):

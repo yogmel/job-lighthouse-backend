@@ -4,7 +4,11 @@
   NULL`` whose company isn't paused, not "jobs from this run". A missed
   digest heals itself: the next one carries its jobs too. Jobs of a paused
   company wait and go out in the first digest after it resumes.
-- No email when that set is empty.
+- No email when that set is empty, or when ``Config.notify_email`` is off.
+- Jobs scoring at or below ``Config.notify_min_score`` are left out. Unscored
+  jobs (no profile, or scoring failed) stay in: there is no score to judge by.
+  Left-out jobs keep ``notified_at`` null, so lowering the threshold later
+  sends them in the next digest. They stay on the board either way.
 - ``notified_at`` is stamped only after the provider confirms the send, and
   only on the jobs that were in it.
 - A failed send is logged and leaves ``notified_at`` null. It doesn't fail
@@ -18,14 +22,16 @@ import logging
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from job_lighthouse_backend.common.email import Email, Mailer
 
-from .models import Company, Job, User
+from .models import Company, Config, Job, User
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_MIN_SCORE = 40
 
 
 async def send_digest(session: AsyncSession, user_id: uuid.UUID, mailer: Mailer) -> int:
@@ -33,6 +39,17 @@ async def send_digest(session: AsyncSession, user_id: uuid.UUID, mailer: Mailer)
 
     Flushes but doesn't commit.
     """
+    # No config row yet means the defaults: on, min score 40.
+    prefs = (
+        await session.execute(
+            select(Config.notify_email, Config.notify_min_score).where(
+                Config.user_id == user_id
+            )
+        )
+    ).one_or_none()
+    notify_email, min_score = prefs or (True, DEFAULT_MIN_SCORE)
+    if not notify_email:
+        return 0
     jobs = (
         await session.scalars(
             select(Job)
@@ -42,6 +59,7 @@ async def send_digest(session: AsyncSession, user_id: uuid.UUID, mailer: Mailer)
                 Company.active.is_(True),
                 Job.active.is_(True),
                 Job.notified_at.is_(None),
+                or_(Job.match_score.is_(None), Job.match_score > min_score),
             )
             .order_by(Job.match_score.desc().nulls_last(), Job.date.desc(), Job.id)
         )
