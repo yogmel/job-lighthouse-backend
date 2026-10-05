@@ -210,13 +210,24 @@ async def detect_company(
     url = normalize_url(body.url)
     # Running out of time cancels the awaits, but not the work already in a
     # thread: a fetch or browser render runs on to its own timeout.
-    deadline = asyncio.get_running_loop().time() + DETECT_BUDGET_SECONDS
+    started = asyncio.get_running_loop().time()
+    deadline = started + DETECT_BUDGET_SECONDS
     try:
         async with asyncio.timeout_at(deadline):
             found = await _find(url, fetch, _static_once(load), proposer)
     except TimeoutError:
-        logger.warning("Detect ran out of time finding a source")
+        # Timings (BE-053): how often the budget is too tight.
+        logger.warning(
+            "Detect timed out finding a source after %.1fs (budget %.0fs)",
+            asyncio.get_running_loop().time() - started,
+            DETECT_BUDGET_SECONDS,
+        )
         return _needs_custom(TIMED_OUT)
+    logger.info(
+        "Detect found a source in %.1fs (budget %.0fs)",
+        asyncio.get_running_loop().time() - started,
+        DETECT_BUDGET_SECONDS,
+    )
     if isinstance(found, str):
         return _needs_custom(found)
     source, openings = found
@@ -241,7 +252,11 @@ async def detect_company(
             async with asyncio.timeout_at(deadline):
                 matches = await score_postings(postings, profile.text, scorer)
         except TimeoutError:
-            logger.warning("Detect ran out of time scoring the sample")
+            logger.warning(
+                "Detect timed out scoring the sample after %.1fs (budget %.0fs)",
+                asyncio.get_running_loop().time() - started,
+                DETECT_BUDGET_SECONDS,
+            )
 
     return DetectOut(
         status="detected",
