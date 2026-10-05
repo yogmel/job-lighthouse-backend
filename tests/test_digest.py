@@ -204,10 +204,75 @@ def test_jobs_sorted_by_score_unscored_last(db, make_user, make_company, make_jo
     for title, score in [("Job Low", 10), ("Job None", None), ("Job High", 90)]:
         job_id = make_job(user["id"], company, title=title)
         db.execute("UPDATE jobs SET match_score = %s WHERE id = %s", (score, job_id))
+    _set_prefs(db, user["id"], min_score=0)
     mailer = FakeMailer()
 
     _run(db, user["id"], mailer=mailer)
     assert _titles(mailer.sent[0]) == ["Job High", "Job Low", "Job None"]
+
+
+# --- notification preferences (BE-047) ---------------------------------------
+
+
+def _set_prefs(db, user_id, email=True, min_score=40) -> None:
+    db.execute(
+        "INSERT INTO config (user_id, location, cron, notify_email, notify_min_score)"
+        " VALUES (%s, '', '0 7 * * *', %s, %s)",
+        (user_id, email, min_score),
+    )
+
+
+@needs_db
+def test_notify_email_off_skips_digest(db, make_user, make_company, make_job):
+    user = make_user()
+    make_job(user["id"], make_company(user["id"]), title="Job A")
+    _set_prefs(db, user["id"], email=False)
+    mailer = FakeMailer()
+
+    _run(db, user["id"], mailer=mailer)
+    assert mailer.sent == []
+    assert _notified(db, user["id"]) == {"Job A": False}
+
+
+@needs_db
+def test_min_score_filters_digest_and_leaves_filtered_unstamped(
+    db, make_user, make_company, make_job
+):
+    user = make_user()
+    company = make_company(user["id"])
+    scores = {"Job Below": 39, "Job At": 40, "Job Above": 41, "Job None": None}
+    for title, score in scores.items():
+        job_id = make_job(user["id"], company, title=title)
+        db.execute("UPDATE jobs SET match_score = %s WHERE id = %s", (score, job_id))
+    _set_prefs(db, user["id"], min_score=40)
+    mailer = FakeMailer()
+
+    _run(db, user["id"], mailer=mailer)
+    assert sorted(_titles(mailer.sent[0])) == ["Job Above", "Job None"]
+    assert _notified(db, user["id"]) == {
+        "Job Below": False,
+        "Job At": False,
+        "Job Above": True,
+        "Job None": True,
+    }
+
+    # Lowering the threshold sends the held-back jobs next time.
+    db.execute(
+        "UPDATE config SET notify_min_score = 0 WHERE user_id = %s", (user["id"],)
+    )
+    _run(db, user["id"], mailer=mailer)
+    assert sorted(_titles(mailer.sent[1])) == ["Job At", "Job Below"]
+
+
+@needs_db
+def test_only_filtered_jobs_sends_nothing(db, make_user, make_company, make_job):
+    user = make_user()
+    job_id = make_job(user["id"], make_company(user["id"]), title="Job Low")
+    db.execute("UPDATE jobs SET match_score = 5 WHERE id = %s", (job_id,))
+    mailer = FakeMailer()
+
+    _run(db, user["id"], mailer=mailer)
+    assert mailer.sent == []
 
 
 # --- POST /runs --------------------------------------------------------------
