@@ -1050,6 +1050,24 @@ proxied to stale IPs and every route returned FastAPI's 404. Edits to
 - `deploy.sh` reloads the compose Nginx after `compose up`
 - After a deploy, `GET /jobs` without a token returns 401, not 404
 
+### ~~PROJ-015 · Restart compose Nginx whenever an app container is recreated~~
+
+**Target:** deploy / Nginx **Version:** v1.0
+
+A manual `docker compose up` on the droplet recreates the app containers
+with no Nginx reload, leaving stale upstream IPs and 404s on every route.
+`restart: true` on Nginx's `depends_on` entries fixes it for any `up`.
+Issue: #151.
+
+**Acceptance criteria:**
+
+- Droplet's `docker compose version` is v2.17+; minimum documented in
+  `docs/DEPLOY.md`
+- `docker compose up -d --force-recreate job-runner companies` restarts
+  Nginx; routes work afterwards without a manual step
+- `deploy/deploy.sh` still works
+- Local `make up` still starts the stack
+
 ### ~~PROJ-013 · /ticket skill: ticket to PR in one command~~
 
 **Target:** project **Version:** v1.0

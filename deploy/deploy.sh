@@ -52,9 +52,9 @@ for id in "${ids[@]}"; do
   fi
 done
 
-# PROJ-011: Nginx resolves the app containers' IPs only at start, and `up`
-# leaves it running while it recreates them. Reload so it picks up the new
-# IPs (and any nginx/default.conf change); otherwise it proxies to stale ones.
+# PROJ-011: Compose restarts Nginx itself when it recreates an app container
+# (`depends_on.restart`, PROJ-015). This reload still picks up an
+# nginx/default.conf change on a deploy that recreates nothing.
 compose exec -T nginx nginx -s reload
 
 # Kept on disk so any later `docker compose` call uses the deployed image

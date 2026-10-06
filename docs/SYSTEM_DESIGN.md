@@ -831,8 +831,10 @@ deploys separately to Vercel.
 **CI/CD: GitHub Actions**, building images and deploying to the droplet on
 push to `main`. Reuses the CI muscle already in this repo (`daily.yml`,
 `full-scan.yml`), retargeted from "run the script" to "build and ship the
-services." Each deploy recreates the app containers but not Nginx, so the
-deploy reloads Nginx afterwards; it resolves upstream IPs only at start.
+services." Nginx resolves upstream IPs only at start, so its `depends_on` entries
+for both services set `restart: true` (Compose v2.17+): recreating either
+restarts Nginx, deploy or manual `up`. The deploy also reloads it, to apply
+`nginx/default.conf` changes.
 
 ## Cutover / data migration
 
