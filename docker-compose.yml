@@ -92,11 +92,15 @@ services:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       # fullchain.pem + privkey.pem. Locally: `make certs` (self-signed).
       - ${NGINX_CERTS_DIR:-./nginx/certs}:/etc/nginx/certs:ro
+    # restart: Nginx resolves the app IPs only at start, so Compose restarts it
+    # whenever it recreates either one (PROJ-015). Needs Compose v2.17+.
     depends_on:
       job-runner:
         condition: service_healthy
+        restart: true
       companies:
         condition: service_healthy
+        restart: true
 
 volumes:
   pgdata:

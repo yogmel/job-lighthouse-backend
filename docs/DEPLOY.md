@@ -10,9 +10,14 @@ Push to `main` → `.github/workflows/deploy.yml`:
 `deploy.sh` pulls the image, runs `docker compose up -d --no-build --wait`
 (migrations first, then both services, then Nginx), and fails if any app
 container isn't on the new image, or if the stack isn't healthy within
-3 minutes. It then reloads Nginx, because Nginx looks up the app
-containers' IPs only at start and the deploy just gave them new ones
-(PROJ-011). The GHCR login uses the job's short-lived
+3 minutes. Nginx looks up the app containers' IPs only at start, so
+`docker-compose.yml` sets `restart: true` on its `depends_on` entries:
+Compose restarts Nginx whenever it recreates `job-runner` or `companies`,
+deploy or manual `docker compose up` (PROJ-015). `deploy.sh` also reloads
+it, so an `nginx/default.conf` change applies even when no app container
+was recreated (PROJ-011). **Requires Docker Compose v2.17+** on the droplet
+(`docker compose version`); the `docker-compose-plugin` install below is
+recent enough. The GHCR login uses the job's short-lived
 `GITHUB_TOKEN` and is logged out after the pull. No long-lived registry
 credential lives on the droplet.
 
