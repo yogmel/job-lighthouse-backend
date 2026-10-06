@@ -247,7 +247,8 @@ Then delete the local `deploy_key` files.
 Actions → **deploy** → *Run workflow* on `main`. Afterwards check:
 
 ```sh
-curl https://<domain>/jobs      # reaches the Job Runner through Nginx
+curl https://<domain>/health    # 200 only if both services are up
+curl https://<domain>/jobs      # reaches the Job Runner through Nginx (401 without a token)
 ```
 
 ## Operations

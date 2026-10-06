@@ -226,6 +226,7 @@ make down
 | --- | --- |
 | `/companies*`, `/auth*`, `/account*` | Companies |
 | `/config*`, `/jobs*`, `/runs*` | Job Runner |
+| `/health` | both: 200 only if Companies and Job Runner both answer |
 | anything else | 404 from Nginx |
 
 - Port 80 redirects to HTTPS on 443.

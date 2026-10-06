@@ -108,7 +108,7 @@ into the Job Runner Service below.
 
 | Component                  | Notes                                                                                                                                     |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Nginx**                  | Single entry point on the droplet. Reverse-proxies to both services by path; terminates TLS.                                              |
+| **Nginx**                  | Single entry point on the droplet. Reverse-proxies to both services by path; terminates TLS. `GET /health` is public: 200 only if both services answer.                                        |
 | **Job Runner Config and Cron** | Owns the `Config` store and the schedule. **Not a separate deploy** — folded into the Job Runner Service, see [Scheduling](#scheduling). |
 | **Job Runner Service**     | Writes `Jobs` and `Runs`/`RunCompanyResults`. Reads `Companies` and `Config`.                                                              |
 | **Companies Service**      | Reads/writes `Companies`. Also owns Auth (`Users`, sessions, password resets) and account management.                                     |
