@@ -173,9 +173,9 @@ Email verification has no equivalent flow in v1 — see
 ```ts
 id: string;
 user_id: string;
-keywords_include: string[];
-keywords_exclude: string[]; // word-boundary matched, applied at scrape time
-location: string;
+keywords_include: string[]; // title contains any (substring); empty = keep all
+keywords_exclude: string[]; // title has any as a whole word; drops the opening
+location: string; // substring of the opening's location; empty = keep all
 cron: Cron;
 profile: string; // markdown, replaces docs/PROFILE.md
 profile_version: number; // bumped on every profile edit
@@ -188,6 +188,12 @@ notify_min_score: number; // 0-100, default 40: digest carries only jobs scoring
 list from the original design — the real UI (Settings → Filters) always
 needed both, plus word-boundary matching on excludes so `"intern"` doesn't
 exclude `"Internal Tools"`.
+
+All three filters are applied at run time to **new** openings only (step 4 of
+the [Job runner](#job-runner-service)), case-insensitive. An opening with no
+location, or one whose location contains `"remote"`, always passes the
+location filter. Changing a filter never touches stored jobs (same rule as
+profile edits).
 
 `profile` lives here rather than in its own store: it is 1:1 with the config,
 has the same lifetime, and is read and written by exactly the same callers
@@ -544,7 +550,12 @@ backend code on `main` as of BE-011 – BE-015.
    company's `custom` handler, depending on `Source.kind`
 3. Get jobs from DB
 4. Filter out already existing jobs (same URL = same job; see
-   [Job](#job) — no content diffing)
+   [Job](#job) — no content diffing), then filter by Config: drop new
+   openings that fail `keywords_include`, `keywords_exclude` or `location`
+   (see [Config](#config)). They are not inserted and not scored. Step 5 and
+   `RunCompanyResult.jobs_found` still use the **full** fetch, so a filter
+   never closes a job and a scraper whose openings are all filtered out still
+   closes disappeared ones.
 5. Close disappeared jobs — for each company whose fetch succeeded, set
    `active = false` on stored jobs (matched by `company_id`) that are no longer
    in its current openings. **The success test differs by source kind** — see

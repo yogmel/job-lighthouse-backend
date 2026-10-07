@@ -152,6 +152,29 @@ def test_profile_read_once_per_run(db, make_user, make_company):
 
 
 @needs_db
+def test_config_filters_drop_new_jobs_before_scoring(db, make_user, make_company):
+    user = make_user()
+    make_company(user["id"], source=_board("a"))
+    _set_profile(db, user["id"], PROFILE, 1)
+    db.execute(
+        "UPDATE config SET keywords_include = '{engineer}',"
+        " keywords_exclude = '{intern}', location = 'Berlin' WHERE user_id = %s",
+        (user["id"],),
+    )
+    fetch = [
+        Opening("Engineer", _url(), location="Remote"),
+        Opening("Engineer Intern", _url()),
+        Opening("Designer", _url()),
+        Opening("Engineer, Munich", _url(), location="Munich"),
+    ]
+    scorer = FakeScorer()
+
+    assert _run(db, user["id"], lambda s: fetch, scorer) == 1
+    assert [c[1].title for c in scorer.calls] == ["Engineer"]
+    assert set(_scores(db, user["id"])) == {"Engineer"}
+
+
+@needs_db
 def test_failed_call_leaves_job_unscored(db, make_user, make_company):
     user = make_user()
     company = make_company(user["id"], source=_board("a"))
