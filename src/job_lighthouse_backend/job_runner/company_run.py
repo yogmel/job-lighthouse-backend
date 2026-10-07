@@ -1,6 +1,9 @@
 """One company's part of a run, always ending in one ``RunCompanyResult``.
 
-Fetch → insert new jobs (BE-022) → close/reopen (BE-023) → result row.
+Fetch → filter → insert new jobs (BE-022) → close/reopen (BE-023) → result row.
+
+The ``Config`` filters (BE-063) only pick which new openings are inserted.
+Close/reopen and ``jobs_found`` use the full fetch.
 
 - A ``custom`` source runs its handler (see ``handlers``). One with no
   handler shipped yet is ``skipped``.
@@ -27,6 +30,7 @@ from job_lighthouse_backend.companies.sources import (
 )
 
 from .boards import fetch_board
+from .filters import NO_FILTER, JobFilter
 from .handlers import NoHandlerError, fetch_custom
 from .models import Company, RunCompanyResult
 from .openings import FetchError, Opening
@@ -66,13 +70,14 @@ async def run_company(
     run_id: uuid.UUID,
     company: Company,
     fetch: Fetcher = fetch_openings,
+    job_filter: JobFilter = NO_FILTER,
 ) -> CompanyOutcome:
     """Process ``company`` for ``run_id`` and add its result row.
 
     Flushes but doesn't commit. Never raises for a fetch or sync failure:
     those become a ``failed`` row.
     """
-    outcome = await _outcome(session, company, fetch)
+    outcome = await _outcome(session, company, fetch, job_filter)
     session.add(
         RunCompanyResult(
             run_id=run_id,
@@ -113,7 +118,7 @@ async def fetch_company(
 
 
 async def _outcome(
-    session: AsyncSession, company: Company, fetch: Fetcher
+    session: AsyncSession, company: Company, fetch: Fetcher, job_filter: JobFilter
 ) -> CompanyOutcome:
     openings = await fetch_company(company, fetch)
     if isinstance(openings, CompanyOutcome):
@@ -121,7 +126,9 @@ async def _outcome(
 
     try:
         async with session.begin_nested():
-            new_ids = await insert_new_jobs(session, company, openings)
+            wanted = [o for o in openings if job_filter.keeps(o)]
+            new_ids = await insert_new_jobs(session, company, wanted)
+            # Unfiltered: filtering must never close a job.
             await sync_active(session, company, openings)
     except SQLAlchemyError as exc:
         logger.exception("Saving jobs failed for company %s", company.id)

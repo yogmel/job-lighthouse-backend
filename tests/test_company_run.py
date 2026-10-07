@@ -17,6 +17,7 @@ from job_lighthouse_backend.job_runner.company_run import (
     fetch_openings,
     run_company,
 )
+from job_lighthouse_backend.job_runner.filters import NO_FILTER, JobFilter
 from job_lighthouse_backend.job_runner.models import Company
 from job_lighthouse_backend.job_runner.openings import FetchError, Opening
 
@@ -39,14 +40,18 @@ def _open_run(db: psycopg.Connection, user_id: uuid.UUID) -> uuid.UUID:
     return row[0]
 
 
-def _process(run_id, company_ids, fetch) -> list[CompanyOutcome]:
+def _process(
+    run_id, company_ids, fetch, job_filter: JobFilter = NO_FILTER
+) -> list[CompanyOutcome]:
     async def fn(session):
         outcomes = []
         for company_id in company_ids:
             company = await session.scalar(
                 select(Company).where(Company.id == company_id)
             )
-            outcomes.append(await run_company(session, run_id, company, fetch))
+            outcomes.append(
+                await run_company(session, run_id, company, fetch, job_filter)
+            )
         return outcomes
 
     return in_session(fn)
@@ -300,3 +305,66 @@ def test_result_stores_company_name(db, make_user, make_company):
         "SELECT company_name FROM run_company_results WHERE run_id = %s", (run,)
     ).fetchone()
     assert row == ("Acme Corp",)
+
+
+# --- Config filters (BE-063) ------------------------------------------------
+
+
+@needs_db
+def test_filtered_openings_not_inserted_but_counted(db, make_user, make_company):
+    user = make_user()
+    company_id = make_company(user["id"], source=BOARD_SOURCE)
+    kept, intern, munich = _url(), _url(), _url()
+    run_id = _open_run(db, user["id"])
+
+    [outcome] = _process(
+        run_id,
+        [company_id],
+        _returns(
+            Opening("Backend Engineer", kept, "Berlin"),
+            Opening("Engineering Intern", intern, "Berlin"),
+            Opening("Backend Engineer", munich, "Munich"),
+        ),
+        JobFilter(include=("engineer",), exclude=("intern",), location="berlin"),
+    )
+    assert len(outcome.new_job_ids) == 1
+    assert outcome.jobs_found == 3
+    assert _results(db, run_id) == {company_id: ("ok", 3, None)}
+    assert _jobs(db, company_id) == {kept: True}
+
+
+@needs_db
+def test_filter_never_closes_listed_jobs(db, make_user, make_company):
+    user = make_user()
+    company_id = make_company(user["id"], source=BOARD_SOURCE)
+    # Stored before the user added an exclude keyword; still listed.
+    listed = _add_job(db, user["id"], company_id)
+    closed = _add_job(db, user["id"], company_id)
+    db.execute("UPDATE jobs SET active = false WHERE url = %s", (closed,))
+    run_id = _open_run(db, user["id"])
+
+    _process(
+        run_id,
+        [company_id],
+        _returns(Opening("Job", listed), Opening("Job", closed)),
+        JobFilter(exclude=("job",)),
+    )
+    # Stays open, and a listed closed job still reopens.
+    assert _jobs(db, company_id) == {listed: True, closed: True}
+
+
+@needs_db
+def test_scraper_all_filtered_still_closes_gone_jobs(db, make_user, make_company):
+    user = make_user()
+    company_id = make_company(user["id"], source=SCRAPER_SOURCE)
+    gone = _add_job(db, user["id"], company_id)
+    run_id = _open_run(db, user["id"])
+
+    _process(
+        run_id,
+        [company_id],
+        _returns(Opening("Designer", _url())),
+        JobFilter(include=("engineer",)),
+    )
+    assert _results(db, run_id) == {company_id: ("ok", 1, None)}
+    assert _jobs(db, company_id) == {gone: False}

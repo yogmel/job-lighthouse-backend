@@ -12,6 +12,7 @@ from job_lighthouse_backend.common.email import Mailer
 
 from .company_run import Fetcher, fetch_openings, run_company
 from .digest import send_digest
+from .filters import load_filter
 from .models import Company, Run
 from .scoring import Scorer, load_profile, score_jobs
 
@@ -29,8 +30,9 @@ async def run_pipeline(
     Without a ``scorer`` or a profile, new jobs are stored unscored. Without
     a ``mailer``, no digest is sent and ``notified_at`` stays null.
     """
-    # Read once: a profile edit mid-run applies to the next run, not this one.
+    # Read once: a profile or filter edit mid-run applies to the next run, not this one.
     profile = await load_profile(session, run.user_id)
+    job_filter = await load_filter(session, run.user_id)
     stmt = select(Company).where(
         Company.user_id == run.user_id, Company.active.is_(True)
     )
@@ -40,7 +42,7 @@ async def run_pipeline(
     companies = (await session.scalars(ordered)).all()
     new_jobs = 0
     for company in companies:
-        outcome = await run_company(session, run.id, company, fetch)
+        outcome = await run_company(session, run.id, company, fetch, job_filter)
         if scorer is not None and profile is not None:
             await score_jobs(session, outcome.new_job_ids, profile, scorer)
         await session.commit()

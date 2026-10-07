@@ -33,7 +33,7 @@ class Config(Base):
     keywords_include: Mapped[list[str]] = mapped_column(
         ARRAY(Text), server_default="{}"
     )
-    # Word-boundary matched, applied at scrape time.
+    # Word-boundary matched against titles of new openings (see filters).
     keywords_exclude: Mapped[list[str]] = mapped_column(
         ARRAY(Text), server_default="{}"
     )
