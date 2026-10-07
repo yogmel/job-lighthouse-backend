@@ -344,8 +344,10 @@ def test_bad_limit_or_cursor_is_422(runner_client, make_user, auth_header):
         {"cursor": ""},
         {"cursor": "not base64!"},
         {"cursor": b64("no separator")},
-        {"cursor": b64(f"2026-09-01T00:00:00|{uuid.uuid4()}")},  # no timezone
-        {"cursor": b64("2026-09-01T00:00:00+00:00|not-a-uuid")},
+        {"cursor": b64(f"1|2026-09-01T00:00:00|{uuid.uuid4()}")},  # no timezone
+        {"cursor": b64("1|2026-09-01T00:00:00+00:00|not-a-uuid")},
+        {"cursor": b64(f"high|2026-09-01T00:00:00+00:00|{uuid.uuid4()}")},
+        {"cursor": b64(f"2026-09-01T00:00:00+00:00|{uuid.uuid4()}")},  # no tier
         {"cursor": base64.urlsafe_b64encode(b"\xff\xfe").decode()},
     ):
         resp = runner_client.get("/jobs", headers=headers, params=params)
@@ -405,3 +407,85 @@ def test_total_count_absent_on_cursor_page(
         "/jobs", headers=headers, params={"limit": 1, "cursor": cursor}
     )
     assert _count(second) is None
+
+
+# BE-060: tier order and per-tier totals.
+
+
+def test_sorted_by_tier_then_newest_first(
+    runner_client, make_user, make_company, make_job, auth_header
+):
+    user = make_user()
+    t1 = make_company(user["id"], name="A", tier=1)
+    t2 = make_company(user["id"], name="B", tier=2)
+    t3 = make_company(user["id"], name="C", tier=3)
+    j3 = make_job(user["id"], t3, date=T0 + timedelta(days=9))
+    j2_old = make_job(user["id"], t2, date=T0)
+    j1_old = make_job(user["id"], t1, date=T0 - timedelta(days=5))
+    j2_new = make_job(user["id"], t2, date=T0 + timedelta(days=1))
+    j1_new = make_job(user["id"], t1, date=T0 + timedelta(days=1))
+
+    assert _ids(runner_client, auth_header(user["id"])) == [
+        str(j) for j in (j1_new, j1_old, j2_new, j2_old, j3)
+    ]
+
+
+def test_cursor_crosses_tier_boundaries(
+    runner_client, make_user, make_company, make_job, auth_header
+):
+    user = make_user()
+    headers = auth_header(user["id"])
+    t1 = make_company(user["id"], name="A", tier=1)
+    t2 = make_company(user["id"], name="B", tier=2)
+    expected = []
+    # Tier 2 holds the newest dates: they must still come after tier 1.
+    for i in range(3):
+        make_job(user["id"], t2, date=T0 + timedelta(days=10 + i))
+    for i in range(3):
+        make_job(user["id"], t1, date=T0 + timedelta(days=i))
+    expected = _ids(runner_client, headers, limit=200)
+
+    for limit in (1, 2, 3, 4):
+        pages = _all_pages(runner_client, headers, limit=limit)
+        assert [i for page in pages for i in page] == expected, limit
+
+
+def test_tier_counts_on_first_page_only(
+    runner_client, make_user, make_company, make_job, auth_header
+):
+    import json
+
+    me, other = make_user(), make_user()
+    headers = auth_header(me["id"])
+    t1 = make_company(me["id"], name="A", tier=1)
+    t3 = make_company(me["id"], name="C", tier=3)
+    make_job(me["id"], t1, date=T0)
+    make_job(me["id"], t1, date=T0 + timedelta(days=1))
+    make_job(me["id"], t3, date=T0)
+    make_job(me["id"], t3, active=False, date=T0)
+    make_job(other["id"], make_company(other["id"], tier=2))
+
+    first = runner_client.get("/jobs", headers=headers, params={"limit": 1})
+    assert json.loads(first.headers["X-Tier-Counts"]) == {"1": 2, "3": 2}
+    assert first.headers["X-Total-Count"] == "4"
+
+    openers = runner_client.get("/jobs", headers=headers, params={"active": "true"})
+    assert json.loads(openers.headers["X-Tier-Counts"]) == {"1": 2, "3": 1}
+
+    only_t3 = runner_client.get("/jobs", headers=headers, params={"tier": 3})
+    assert json.loads(only_t3.headers["X-Tier-Counts"]) == {"3": 2}
+
+    second = runner_client.get(
+        "/jobs",
+        headers=headers,
+        params={"limit": 1, "cursor": first.headers["X-Next-Cursor"]},
+    )
+    assert "X-Tier-Counts" not in second.headers
+
+
+def test_tier_counts_empty_object_when_nothing_matches(
+    runner_client, make_user, auth_header
+):
+    resp = runner_client.get("/jobs", headers=auth_header(make_user()["id"]))
+    assert resp.headers["X-Tier-Counts"] == "{}"
+    assert resp.headers["X-Total-Count"] == "0"
