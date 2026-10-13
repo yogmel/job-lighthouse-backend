@@ -439,6 +439,9 @@ type DetectOut = {
   Out of time while scoring: `detected` with the sample unscored.
   Every detect logs how long finding the source took, and timeouts log at
   warning level (BE-053): use them to decide if the budget is too tight.
+  Both services log `job_lighthouse_backend.*` at INFO to stderr (BE-064),
+  so they show in `docker compose logs`. Those logs last only until the
+  container is recreated (each deploy).
 - `422 { detail }`: the URL can't be loaded at all, or a matched board's
   API fails (e.g. a wrong slug).
 - **Confirm** = `POST /companies` with the returned `source` unchanged. No
