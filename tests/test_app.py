@@ -5,13 +5,19 @@ The happy-path test needs a reachable Postgres (``make db-up``) and
 """
 
 import importlib
+import io
+import logging
 import os
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
-from job_lighthouse_backend.common.app import create_app
+from job_lighthouse_backend.common.app import (
+    PACKAGE_LOGGER,
+    configure_logging,
+    create_app,
+)
 from job_lighthouse_backend.common.db import normalize_database_url
 from job_lighthouse_backend.common.settings import SettingsError
 
@@ -59,3 +65,18 @@ def test_service_apps_serve_health(module: str) -> None:
     app = importlib.import_module(module).app
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
+
+
+def test_configure_logging_emits_info_once() -> None:
+    package = logging.getLogger(PACKAGE_LOGGER)
+    configure_logging()
+    configure_logging()
+    handlers = [h for h in package.handlers if getattr(h, "_app_handler", False)]
+    assert len(handlers) == 1
+
+    stream = io.StringIO()
+    handlers[0].setStream(stream)  # type: ignore[attr-defined]
+    logging.getLogger(f"{PACKAGE_LOGGER}.companies.detect").info("timing %s", "ok")
+    line = "INFO job_lighthouse_backend.companies.detect: timing ok"
+    assert line in stream.getvalue()
+    assert logging.getLogger("httpx").getEffectiveLevel() == logging.WARNING

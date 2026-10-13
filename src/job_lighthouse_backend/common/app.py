@@ -23,12 +23,35 @@ from .settings import Settings, cors_allowed_origins_from_env
 
 logger = logging.getLogger(__name__)
 
+PACKAGE_LOGGER = "job_lighthouse_backend"
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+
+def configure_logging() -> None:
+    """Show this package's INFO logs; leave third-party loggers alone.
+
+    Uvicorn configures only its own loggers, so without this the root default
+    (WARNING) drops every ``logger.info`` here. A handler on the package
+    logger, not ``basicConfig``, keeps httpx and openai quiet. Safe to call
+    twice (and after a module reload): it adds the handler once.
+    """
+    package = logging.getLogger(PACKAGE_LOGGER)
+    package.setLevel(logging.INFO)
+    if any(getattr(h, "_app_handler", False) for h in package.handlers):
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    handler._app_handler = True  # type: ignore[attr-defined]
+    package.addHandler(handler)
+
 
 # Started once the DB is up; gets the app, so it can read ``app.state``.
 Background = Callable[[FastAPI], Coroutine[Any, Any, None]]
 
 
 def create_app(title: str, background: Sequence[Background] = ()) -> FastAPI:
+    configure_logging()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings = Settings.from_env()
