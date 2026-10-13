@@ -155,7 +155,9 @@ Email needs these (from v0.6):
   `POST /auth/password-reset/request` still answers 202 but sends nothing.
 
 Scheduling needs nothing (from v0.7). The Job Runner ticks every minute and
-starts the runs due by each user's `Config.cron` (UTC).
+starts the runs due by each user's `Config.cron`, read in that user's
+`Config.timezone` (IANA name, `UTC` by default). The container clock stays
+UTC; DST changes need no server setting.
 
 - `SCHEDULER_ENABLED`: optional, `true` by default. `false` stops scheduled
   runs; manual `POST /runs` still works.
