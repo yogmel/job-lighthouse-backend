@@ -216,6 +216,8 @@ class RunCompanyResultOut(BaseModel):
     company: str
     status: Literal["ok", "failed", "skipped"]
     jobs_found: int
+    # Jobs the run stored for this company.
+    new_jobs: int
     error: str | None
 
 
@@ -255,6 +257,7 @@ async def list_run_companies(
                 "company": name,
                 "status": result.status,
                 "jobs_found": result.jobs_found,
+                "new_jobs": result.new_jobs,
                 "error": result.error,
             }
         )

@@ -27,13 +27,14 @@ def _make_result(
     status: str = "ok",
     jobs_found: int = 0,
     error: str | None = None,
+    new_jobs: int = 0,
 ) -> uuid.UUID:
     row = db.execute(
         "INSERT INTO run_company_results"
-        " (run_id, company_id, company_name, status, jobs_found, error)"
-        " VALUES (%s, %s, (SELECT name FROM companies WHERE id = %s), %s, %s, %s)"
+        " (run_id, company_id, company_name, status, jobs_found, error, new_jobs)"
+        " VALUES (%s, %s, (SELECT name FROM companies WHERE id = %s), %s, %s, %s, %s)"
         " RETURNING id",
-        (run_id, company_id, company_id, status, jobs_found, error),
+        (run_id, company_id, company_id, status, jobs_found, error, new_jobs),
     ).fetchone()
     assert row is not None
     return row[0]
@@ -49,7 +50,7 @@ def test_returns_breakdown(runner_client, db, make_user, make_company, auth_head
     acme = make_company(user["id"], name="Acme")
     paused = make_company(user["id"], name="Zeta", active=False)
     run = _make_run(db, user["id"])
-    ok = _make_result(db, run, northstar, jobs_found=0)
+    ok = _make_result(db, run, northstar, jobs_found=5, new_jobs=2)
     failed = _make_result(db, run, acme, status="failed", error="HTTP 500")
     skipped = _make_result(db, run, paused, status="skipped")
     # Another run's results don't leak in.
@@ -64,6 +65,7 @@ def test_returns_breakdown(runner_client, db, make_user, make_company, auth_head
             "company": "Acme",
             "status": "failed",
             "jobs_found": 0,
+            "new_jobs": 0,
             "error": "HTTP 500",
         },
         {
@@ -71,7 +73,8 @@ def test_returns_breakdown(runner_client, db, make_user, make_company, auth_head
             "company_id": str(northstar),
             "company": "Northstar",
             "status": "ok",
-            "jobs_found": 0,
+            "jobs_found": 5,
+            "new_jobs": 2,
             "error": None,
         },
         {
@@ -80,6 +83,7 @@ def test_returns_breakdown(runner_client, db, make_user, make_company, auth_head
             "company": "Zeta",
             "status": "skipped",
             "jobs_found": 0,
+            "new_jobs": 0,
             "error": None,
         },
     ]
