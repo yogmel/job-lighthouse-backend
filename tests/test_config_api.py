@@ -13,6 +13,7 @@ BODY = {
     "keywords_exclude": ["intern"],
     "location": "Berlin",
     "cron": "0 8 * * 1-5",
+    "timezone": "Europe/Berlin",
     "profile": "# Profile\nBackend engineer.",
     "notify_email": True,
     "notify_empty_company": True,
@@ -45,6 +46,7 @@ def test_get_creates_defaults_once(runner_client, make_user, auth_header, db):
         "keywords_exclude": [],
         "location": "",
         "cron": "0 7 * * *",
+        "timezone": "UTC",
         "profile": "",
         "profile_version": 1,
         "notify_email": True,
@@ -139,6 +141,10 @@ def test_put_validation(runner_client, make_user, auth_header):
         {**BODY, "cron": "  "},
         {**BODY, "keywords_exclude": [""]},
         {**BODY, "keywords_include": "backend"},
+        {**BODY, "timezone": "Mars/Olympus"},
+        {**BODY, "timezone": "+02:00"},
+        {**BODY, "timezone": ""},
+        {k: v for k, v in BODY.items() if k != "timezone"},
         {**BODY, "notify_min_score": -1},
         {**BODY, "notify_min_score": 101},
         {**BODY, "notify_email": "maybe"},
@@ -164,3 +170,13 @@ def test_put_stores_notification_prefs(runner_client, make_user, auth_header):
     assert _put(runner_client, headers, **prefs).items() >= prefs.items()
     assert runner_client.get("/config", headers=headers).json().items() >= prefs.items()
     assert _put(runner_client, headers, notify_min_score=100)["notify_min_score"] == 100
+
+
+def test_put_stores_timezone(runner_client, make_user, auth_header):
+    headers = auth_header(make_user()["id"])
+    assert (
+        _put(runner_client, headers, timezone="America/New_York")["timezone"]
+        == "America/New_York"
+    )
+    got = runner_client.get("/config", headers=headers).json()
+    assert got["timezone"] == "America/New_York"

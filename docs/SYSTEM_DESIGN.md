@@ -177,6 +177,7 @@ keywords_include: string[]; // title contains any (substring); empty = keep all
 keywords_exclude: string[]; // title has any as a whole word; drops the opening
 location: string; // substring of the opening's location; empty = keep all
 cron: Cron;
+timezone: string; // IANA name the cron is evaluated in; default "UTC"
 profile: string; // markdown, replaces docs/PROFILE.md
 profile_version: number; // bumped on every profile edit
 notify_email: boolean; // default true: digest on/off
@@ -526,15 +527,16 @@ backend code on `main` as of BE-011 – BE-015.
 | Endpoint      | Request body                                                           | Success      |
 | ------------- | ---------------------------------------------------------------------- | ------------ |
 | `GET /config` | none                                                                   | `200 Config` |
-| `PUT /config` | `{ keywords_include, keywords_exclude, location, cron, profile, notify_email, notify_empty_company, notify_min_score }` (all required) | `200 Config` |
+| `PUT /config` | `{ keywords_include, keywords_exclude, location, cron, timezone, profile, notify_email, notify_empty_company, notify_min_score }` (all required) | `200 Config` |
 
 - `Config` is the full [Config](#config) row.
 - The row is created with defaults on the first `GET` or `PUT`: empty
-  keywords, location and profile, `cron: "0 7 * * *"`, `profile_version: 1`,
+  keywords, location and profile, `cron: "0 7 * * *"`, `timezone: "UTC"`, `profile_version: 1`,
   `notify_email: true`, `notify_empty_company: true`, `notify_min_score: 40`.
 - `PUT` replaces every editable field. `profile_version` is server-owned and
   goes up by one only when `profile` actually changes. `notify_min_score`
-  outside 0–100 is a `422`.
+  outside 0–100 is a `422`, and so is a `timezone` that isn't a known IANA
+  name (e.g. `"Mars/Olympus"` or `"+02:00"`).
 
 ---
 
@@ -604,8 +606,9 @@ due.
 - A Single-company run (`POST /runs` with `{ company_id }`) uses the same
   pipeline, lock, close rules, scoring and Digest, with `trigger: "manual"`,
   but is not a schedule run: it never makes a Full run "not due".
-- Cron is a standard 5-field expression in UTC. An invalid one is logged and
-  skipped.
+- Cron is a standard 5-field expression read as wall-clock time in
+  `Config.timezone` (IANA name, default `UTC`), so "9am" stays 9am across DST
+  changes. An invalid cron or zone is logged and skipped.
 
 Ticking, rather than registering a cron job at boot, is what keeps `Config.cron`
 meaningful — `PUT /config` changes the schedule on the next tick, with no

@@ -39,6 +39,35 @@ def test_next_fire_is_utc() -> None:
     assert next_fire("0 16 * * *", tokyo) == datetime(2026, 10, 2, 16, tzinfo=UTC)
 
 
+def test_next_fire_in_zone_follows_dst() -> None:
+    # 09:00 in New York is 14:00 UTC before the US change (2026-03-08)
+    # and 13:00 UTC after it.
+    ny = "America/New_York"
+    before = datetime(2026, 3, 7, 15, 0, tzinfo=UTC)
+    assert next_fire("0 9 * * *", before, ny) == datetime(2026, 3, 8, 13, tzinfo=UTC)
+    assert next_fire("0 9 * * *", before - timedelta(days=1), ny) == datetime(
+        2026, 3, 7, 14, tzinfo=UTC
+    )
+    # And back in autumn (2026-11-01): 13:00 UTC -> 14:00 UTC.
+    assert next_fire("0 9 * * *", datetime(2026, 10, 31, 14, tzinfo=UTC), ny) == (
+        datetime(2026, 11, 1, 14, tzinfo=UTC)
+    )
+
+
+def test_next_fire_skipped_hour_still_fires_once() -> None:
+    # 02:30 doesn't exist on 2026-03-08 in New York; there's still one fire a day.
+    ny = "America/New_York"
+    after = datetime(2026, 3, 7, 12, tzinfo=UTC)
+    first = next_fire("30 2 * * *", after, ny)
+    assert first < datetime(2026, 3, 8, 12, tzinfo=UTC)
+    assert next_fire("30 2 * * *", first, ny) > first
+
+
+def test_unknown_zone_is_invalid() -> None:
+    with pytest.raises(InvalidCron):
+        next_fire("0 7 * * *", T, "Mars/Olympus")
+
+
 def test_due_once_fire_time_passes() -> None:
     last = T - timedelta(days=1)
     assert not is_due("0 7 * * *", last, T - timedelta(minutes=1))
@@ -190,6 +219,31 @@ def test_user_with_only_single_company_runs_waits_for_first_fire(db, make_user) 
 
     assert user_id not in _tick(created_at)
     assert user_id in _tick(created_at + timedelta(minutes=1))
+
+
+@needs_db
+def test_tick_evaluates_cron_in_the_users_zone(db, make_user) -> None:
+    """BE-062: 09:00 New York is 13:00 UTC in summer time, 14:00 in winter."""
+    cron = "0 9 * * *"
+    summer = datetime(2026, 7, 1, 13, 0, 30, tzinfo=UTC)
+    winter = datetime(2026, 1, 15, 14, 0, 30, tzinfo=UTC)
+    # Both ran the evening before, so only that day's 09:00 can make them due.
+    ny_summer = _user(db, make_user, cron, summer - timedelta(hours=18))
+    ny_winter = _user(db, make_user, cron, winter - timedelta(hours=18))
+    utc = _user(db, make_user, cron, summer - timedelta(hours=18))
+    db.execute(
+        "UPDATE config SET timezone = 'America/New_York' WHERE user_id = ANY(%s)",
+        ([ny_summer, ny_winter],),
+    )
+
+    assert ny_summer in _tick(summer)
+    assert ny_summer not in _tick(summer - timedelta(minutes=1, seconds=30))
+    assert ny_winter in _tick(winter)
+    assert ny_winter not in _tick(winter - timedelta(minutes=1, seconds=30))
+    # An untouched row keeps the UTC default: 09:00 UTC, four hours earlier.
+    nine_utc = datetime(2026, 7, 1, 9, 0, 30, tzinfo=UTC)
+    assert utc not in _tick(nine_utc - timedelta(minutes=1))
+    assert utc in _tick(nine_utc)
 
 
 @needs_db

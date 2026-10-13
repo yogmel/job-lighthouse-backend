@@ -40,6 +40,8 @@ class Config(Base):
     location: Mapped[str] = mapped_column(Text)
     # Cron expression, read by the runner's tick loop.
     cron: Mapped[str] = mapped_column(Text)
+    # IANA name the cron is evaluated in.
+    timezone: Mapped[str] = mapped_column(Text, server_default="UTC")
     # Markdown.
     profile: Mapped[str] = mapped_column(Text, server_default="")
     # Bumped on every profile edit. No history of past texts is kept.

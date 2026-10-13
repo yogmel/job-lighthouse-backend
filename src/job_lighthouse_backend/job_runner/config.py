@@ -6,9 +6,10 @@ create it, and the frontend reads it before the user has saved anything.
 
 import uuid
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 from sqlalchemy import case
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
@@ -28,6 +29,18 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 DEFAULT_CRON = "0 7 * * *"
 
 
+def _iana_zone(name: str) -> str:
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        raise ValueError(f"unknown time zone: {name!r}") from None
+    return name
+
+
+# An IANA name such as "Europe/London". Bare offsets like "+02:00" aren't one.
+TimeZoneName = Annotated[str, AfterValidator(_iana_zone)]
+
+
 class ConfigOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -37,6 +50,7 @@ class ConfigOut(BaseModel):
     keywords_exclude: list[str]
     location: str
     cron: str
+    timezone: str
     profile: str
     profile_version: int
     notify_email: bool
@@ -55,6 +69,8 @@ class ConfigIn(BaseModel):
     location: str
     # Checked against the schedule by the tick loop (v0.7).
     cron: NonEmptyStr
+    # The zone ``cron`` is evaluated in, so "9am" follows DST.
+    timezone: TimeZoneName
     # Markdown. Empty means "don't score".
     profile: str
     notify_email: bool

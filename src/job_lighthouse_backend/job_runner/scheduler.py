@@ -11,7 +11,8 @@ A Single-company run is not a schedule run, so it never counts. So:
 - a manual run after a fire time counts as that fire's run
 - a user with no runs yet waits for the first fire after signup
 
-Cron expressions are standard 5-field ones, evaluated in UTC.
+Cron expressions are standard 5-field ones, evaluated in the user's
+``Config.timezone``, so "9am" stays 9am across DST changes.
 """
 
 import asyncio
@@ -20,6 +21,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 from sqlalchemy import func, select
@@ -45,20 +47,31 @@ class InvalidCron(ValueError):
 class Schedule:
     user_id: uuid.UUID
     cron: str
+    timezone: str
     # Last Full run's ``started_at``, or signup time if the user never ran.
     last_started_at: datetime
 
 
-def next_fire(cron: str, after: datetime) -> datetime:
-    """First fire time of ``cron`` strictly after ``after``, in UTC."""
+def next_fire(cron: str, after: datetime, timezone: str = "UTC") -> datetime:
+    """First fire time of ``cron`` strictly after ``after``, as UTC.
+
+    ``cron`` is read as wall-clock time in ``timezone`` (an IANA name).
+    """
     # croniter also takes a 6th (seconds) field; the tick only has minutes.
     if len(cron.split()) != 5 or not croniter.is_valid(cron):
         raise InvalidCron(cron)
-    return croniter(cron, after.astimezone(UTC)).get_next(datetime)
+    try:
+        zone = ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        raise InvalidCron(f"unknown time zone {timezone!r}") from None
+    fire = croniter(cron, after.astimezone(zone)).get_next(datetime)
+    return fire.astimezone(UTC)
 
 
-def is_due(cron: str, last_started_at: datetime, now: datetime) -> bool:
-    return next_fire(cron, last_started_at) <= now
+def is_due(
+    cron: str, last_started_at: datetime, now: datetime, timezone: str = "UTC"
+) -> bool:
+    return next_fire(cron, last_started_at, timezone) <= now
 
 
 async def load_schedules(
@@ -73,19 +86,21 @@ async def load_schedules(
     stmt = select(
         Config.user_id,
         Config.cron,
+        Config.timezone,
         func.coalesce(last_run, User.created_at),
     ).join(User, User.id == Config.user_id)
     if user_ids is not None:
         stmt = stmt.where(Config.user_id.in_(user_ids))
     rows = (await session.execute(stmt.order_by(Config.user_id))).all()
-    return [Schedule(user_id, cron, last) for user_id, cron, last in rows]
+    return [Schedule(user_id, cron, tz, last) for user_id, cron, tz, last in rows]
 
 
 def _due(schedule: Schedule, now: datetime) -> bool:
     try:
-        return is_due(schedule.cron, schedule.last_started_at, now)
+        return is_due(schedule.cron, schedule.last_started_at, now, schedule.timezone)
     except InvalidCron:
-        # PUT /config accepts any non-empty string. Skip, don't stop the tick.
+        # PUT /config accepts any non-empty cron; a bad zone lands here too.
+        # Skip, don't stop the tick.
         logger.warning("Invalid cron for user %s; skipped", schedule.user_id)
         return False
 
