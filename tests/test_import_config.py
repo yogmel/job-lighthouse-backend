@@ -71,6 +71,17 @@ def test_maps_each_kind(config: Path):
     assert [s.split(":")[0] for s in skipped] == ["Langfuse"]
 
 
+def test_betterstack_imports_as_an_active_scraper(tmp_path: Path):
+    path = tmp_path / "c.yaml"
+    path.write_text(
+        "companies:\n  - {name: Better Stack, tier: 3, type: betterstack}\n"
+    )
+    (company,), _ = load_companies(path)
+    assert company.active is True
+    assert company.source["kind"] == "scraper"
+    assert company.source["selectors"]["link"] == "@data-role"
+
+
 def test_custom_companies_are_paused_and_others_active(config: Path):
     companies, _ = load_companies(config)
     active = {c.name: c.active for c in companies}

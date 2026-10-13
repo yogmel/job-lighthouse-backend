@@ -485,3 +485,64 @@ def test_fetch_static_page_uses_own_session(monkeypatch):
     monkeypatch.setattr(scraper.requests, "Session", _Session)
     assert scraper.fetch_static_page(CAREERS) == (CAREERS, PAGE)
     assert http.calls == [CAREERS]
+
+
+ROLES = """
+<div data-careers-roles-target="roleContent" data-role="frontend-engineer"
+     data-role-title="Frontend Engineer">
+  <span data-careers-roles-target="remoteLocation">Remote (EU)</span>
+</div>
+<div data-careers-roles-target="roleContent" data-role="sre"
+     data-role-title="SRE"></div>
+"""
+
+
+def _attr_source(**selectors) -> ScraperSource:
+    return _source(
+        job="[data-careers-roles-target='roleContent']",
+        title="@data-role-title",
+        link="@data-role",
+        location="[data-careers-roles-target='remoteLocation']",
+        url_template="{careers_url}#{link}",
+        **selectors,
+    )
+
+
+def test_attribute_selectors_and_url_template():
+    http = FakeHttp(_response(body=ROLES.encode()))
+    assert fetch_scraper(_attr_source(), http) == [
+        Opening("Frontend Engineer", f"{CAREERS}#frontend-engineer", "Remote (EU)"),
+        Opening("SRE", f"{CAREERS}#sre", ""),
+    ]
+
+
+def test_attribute_on_a_child_element():
+    html = '<div class="row"><b data-t="QA">x</b><a data-id="7">y</a></div>'
+    selectors = _source(
+        job="div.row",
+        title="b@data-t",
+        link="a@data-id",
+        location=None,
+        url_template="https://acme.example/j/{link}",
+    ).selectors
+    assert parse_openings(html, CAREERS, selectors) == [
+        Opening("QA", "https://acme.example/j/7")
+    ]
+
+
+def test_missing_attribute_is_failure():
+    html = '<div data-careers-roles-target="roleContent" data-role="x"></div>'
+    with pytest.raises(FetchError, match="no title or link"):
+        parse_openings(html, CAREERS, _attr_source().selectors)
+
+
+def test_at_sign_inside_a_css_value_is_not_an_attribute():
+    html = '<a href="mailto:a@b.c" class="j"><h3>T</h3></a>'
+    selectors = _source(job="a[href*='@']", title="h3", link="a").selectors
+    with pytest.raises(FetchError, match="not an http"):
+        parse_openings(html, CAREERS, selectors)
+
+
+def test_url_template_must_contain_link():
+    with pytest.raises(ValueError, match="url_template"):
+        _source(url_template="{careers_url}#x")
