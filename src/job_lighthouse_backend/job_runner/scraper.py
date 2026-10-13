@@ -28,7 +28,11 @@ from requests.structures import CaseInsensitiveDict
 from requests.utils import get_encoding_from_headers
 from soupsieve import SelectorSyntaxError
 
-from job_lighthouse_backend.companies.sources import ScraperSource, Selectors
+from job_lighthouse_backend.companies.sources import (
+    ScraperSource,
+    Selectors,
+    split_attr,
+)
 
 from .openings import TIMEOUT, USER_AGENT, FetchError, Opening
 
@@ -192,6 +196,29 @@ def _text(tag: Tag) -> str:
     return " ".join(tag.get_text(" ", strip=True).split())
 
 
+def _read(card: Tag, spec: str) -> str:
+    """Text of the element ``spec`` selects, or its ``@attr`` if given."""
+    css, attr = split_attr(spec)
+    tag = card.select_one(css) if css else card
+    if tag is None:
+        return ""
+    if attr is None:
+        return _text(tag)
+    value = tag.get(attr)
+    return " ".join(value.split()) if isinstance(value, str) else ""
+
+
+def _read_link(card: Tag, spec: str) -> str:
+    css, attr = split_attr(spec)
+    if attr is not None:
+        return _read(card, spec)
+    # select_one only searches descendants, so when the card is itself the
+    # link (job selector matches an <a>), use its own href.
+    tag = card if card.name == "a" and card.get("href") else card.select_one(css)
+    href = tag.get("href") if tag else None
+    return href.strip() if isinstance(href, str) else ""
+
+
 def parse_openings(html: str, base_url: str, selectors: Selectors) -> list[Opening]:
     """Apply ``selectors`` to ``html``. Links resolve against ``base_url``."""
     soup = BeautifulSoup(html, "html.parser")
@@ -199,25 +226,19 @@ def parse_openings(html: str, base_url: str, selectors: Selectors) -> list[Openi
         cards = soup.select(selectors.job)
         openings: dict[str, Opening] = {}
         for card in cards:
-            title_tag = card.select_one(selectors.title)
-            # select_one only searches descendants, so when the card is
-            # itself the link (job selector matches an <a>), use its own href.
-            link_tag = (
-                card
-                if card.name == "a" and card.get("href")
-                else card.select_one(selectors.link)
-            )
-            location_tag = (
-                card.select_one(selectors.location) if selectors.location else None
-            )
-            title = _text(title_tag) if title_tag else ""
-            href = link_tag.get("href") if link_tag else None
-            if not title or not isinstance(href, str) or not href.strip():
+            title = _read(card, selectors.title)
+            location = _read(card, selectors.location) if selectors.location else ""
+            href = _read_link(card, selectors.link)
+            if not title or not href:
                 raise FetchError("a job card has no title or link")
-            url = urljoin(base_url, href.strip())
+            if selectors.url_template:
+                url = selectors.url_template.replace("{link}", href).replace(
+                    "{careers_url}", base_url
+                )
+            else:
+                url = urljoin(base_url, href)
             if urlsplit(url).scheme not in ("http", "https"):
                 raise FetchError("a job link is not an http(s) URL")
-            location = _text(location_tag) if location_tag else ""
             # Same URL twice on one page is one job; keep the first.
             openings.setdefault(url, Opening(title=title, url=url, location=location))
     except SelectorSyntaxError as exc:

@@ -42,9 +42,20 @@ CUSTOM_HANDLERS = {
     "ebay": "ebay",
     "kleinanzeigen": "kleinanzeigen",
     "bolt": "bolt",
-    "betterstack": "betterstack",
     "personio": "personio",
     "teamtailor": "eterno-group",
+}
+
+# Old bespoke types that a plain `scraper` source covers (BE-066).
+SCRAPER_SOURCES = {
+    "betterstack": {
+        "careers_url": "https://betterstack.com/careers/open-positions",
+        "job": 'div[data-careers-roles-target="roleContent"]',
+        "title": "@data-role-title",
+        "link": "@data-role",
+        "location": '[data-careers-roles-target="remoteLocation"]',
+        "url_template": "{careers_url}#{link}",
+    },
 }
 
 # `config.yaml` has no marketing URL, but `Companies.website_url` is required.
@@ -134,6 +145,12 @@ def to_source(entry: Mapping[str, Any]) -> dict[str, Any]:
             "link": entry.get("link_selector", "a"),
         }
         raw = {"kind": "scraper", "strategy": kind, "selectors": selectors}
+    elif kind in SCRAPER_SOURCES:
+        raw = {
+            "kind": "scraper",
+            "strategy": "static",
+            "selectors": SCRAPER_SOURCES[kind],
+        }
     elif kind in CUSTOM_HANDLERS:
         raw = {"kind": "custom", "handler": CUSTOM_HANDLERS[kind]}
     else:

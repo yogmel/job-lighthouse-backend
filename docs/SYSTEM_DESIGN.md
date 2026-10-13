@@ -369,13 +369,23 @@ integrations.
 ### Selectors
 
 ```ts
-careers_url: string; // page to load
-job: string;         // job card container
+careers_url: string;  // page to load
+job: string;          // job card container
 title: string;
-link: string;        // searched inside the card; if the card is itself an
-                     // <a> with an href, that href is used instead
+link: string;         // searched inside the card; if the card is itself an
+                      // <a> with an href, that href is used instead
 location?: string;
+url_template?: string; // e.g. "{careers_url}#{link}"; must contain {link}
 ```
+
+`title`, `link` and `location` are CSS selectors inside the card. End one with
+`@attr` to read that attribute instead of the text (or, for `link`, the
+`href`): `h3@data-title`. `@attr` alone reads the card's own attribute. This
+covers pages that keep job data in `data-*` attributes.
+
+When a page has no per-job URL, `link` can read an id or slug and
+`url_template` builds the URL from it. `{careers_url}` is the page URL after
+redirects. Without a template the link value is resolved against the page URL.
 
 ---
 
