@@ -125,4 +125,6 @@ class RunCompanyResult(Base):
     # "ok" | "failed" | "skipped"
     status: Mapped[str] = mapped_column(Text)
     jobs_found: Mapped[int] = mapped_column(server_default="0")
+    # Jobs this run stored for the company; they sum to ``Run.jobs_found``.
+    new_jobs: Mapped[int] = mapped_column(server_default="0")
     error: Mapped[str | None] = mapped_column(Text)

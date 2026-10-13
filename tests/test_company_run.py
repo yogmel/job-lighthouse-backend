@@ -66,6 +66,14 @@ def _results(db: psycopg.Connection, run_id: uuid.UUID) -> dict[uuid.UUID, tuple
     return {r[0]: r[1:] for r in rows}
 
 
+def _new_jobs(db: psycopg.Connection, run_id: uuid.UUID) -> dict[uuid.UUID, int]:
+    rows = db.execute(
+        "SELECT company_id, new_jobs FROM run_company_results WHERE run_id = %s",
+        (run_id,),
+    ).fetchall()
+    return dict(rows)
+
+
 def _jobs(db: psycopg.Connection, company_id: uuid.UUID) -> dict[str, bool]:
     rows = db.execute(
         "SELECT url, active FROM jobs WHERE company_id = %s", (company_id,)
@@ -112,6 +120,27 @@ def test_ok_inserts_closes_and_records(db, make_user, make_company):
     assert len(outcome.new_job_ids) == 1
     assert _results(db, run_id) == {company_id: ("ok", 1, None)}
     assert _jobs(db, company_id) == {gone: False, new_url: True}
+
+
+@needs_db
+def test_records_new_jobs_per_company(db, make_user, make_company):
+    user = make_user()
+    first = make_company(user["id"], source=BOARD_SOURCE)
+    second = make_company(user["id"], source=BOARD_SOURCE)
+    failing = make_company(user["id"], source=BOARD_SOURCE)
+    known = _add_job(db, user["id"], first)
+    run_id = _open_run(db, user["id"])
+
+    # `known` is already stored, so only the two other openings are new.
+    _process(
+        run_id,
+        [first],
+        _returns(Opening("Old", known), Opening("A", _url()), Opening("B", _url())),
+    )
+    _process(run_id, [second], _returns())
+    _process(run_id, [failing], _raises(FetchError("HTTP 503")))
+
+    assert _new_jobs(db, run_id) == {first: 2, second: 0, failing: 0}
 
 
 @needs_db

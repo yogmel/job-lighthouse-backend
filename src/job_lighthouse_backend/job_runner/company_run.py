@@ -85,6 +85,7 @@ async def run_company(
             company_name=company.name,
             status=outcome.status,
             jobs_found=outcome.jobs_found,
+            new_jobs=len(outcome.new_job_ids),
             error=outcome.error,
         )
     )

@@ -298,7 +298,8 @@ run_id: string; // FK -> Runs.id
 company_id: string | null; // FK -> Companies.id, ON DELETE SET NULL
 company_name: string; // Company name when the row was written
 status: "ok" | "failed" | "skipped";
-jobs_found: number;
+jobs_found: number; // distinct openings fetched (the full fetch, before filters)
+new_jobs: number; // jobs this run stored for the company; sums to Runs.jobs_found
 error: string | null;
 ```
 
