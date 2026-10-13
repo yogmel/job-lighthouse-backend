@@ -200,7 +200,13 @@ def parse_openings(html: str, base_url: str, selectors: Selectors) -> list[Openi
         openings: dict[str, Opening] = {}
         for card in cards:
             title_tag = card.select_one(selectors.title)
-            link_tag = card.select_one(selectors.link)
+            # select_one only searches descendants, so when the card is
+            # itself the link (job selector matches an <a>), use its own href.
+            link_tag = (
+                card
+                if card.name == "a" and card.get("href")
+                else card.select_one(selectors.link)
+            )
             location_tag = (
                 card.select_one(selectors.location) if selectors.location else None
             )
