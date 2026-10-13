@@ -364,7 +364,8 @@ integrations.
 careers_url: string; // page to load
 job: string;         // job card container
 title: string;
-link: string;
+link: string;        // searched inside the card; if the card is itself an
+                     // <a> with an href, that href is used instead
 location?: string;
 ```
 

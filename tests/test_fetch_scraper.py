@@ -123,6 +123,23 @@ def test_selectors_come_from_the_source_not_hardcoded():
     assert fetch_scraper(source, http) == [Opening("QA", "https://acme.example/q")]
 
 
+def test_card_that_is_the_link_uses_its_own_href():
+    html = (
+        '<a href="https://apply.other.example/jobs/9"><span class="x__title">'
+        "Frontend</span></a>"
+    )
+    http = FakeHttp(_response(body=html.encode()))
+    source = _source(
+        job="a[href^='https://apply.other.example/jobs/']",
+        title="span[class*='__title']",
+        link="a",
+        location=None,
+    )
+    assert fetch_scraper(source, http) == [
+        Opening("Frontend", "https://apply.other.example/jobs/9")
+    ]
+
+
 def test_zero_cards_is_empty_not_failure():
     http = FakeHttp(_response(body=b"<html><p>No roles right now</p></html>"))
     assert fetch_scraper(_source(), http) == []
