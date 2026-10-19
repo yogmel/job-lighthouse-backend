@@ -136,7 +136,7 @@ def test_scheduler_bad_value(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _config(db: psycopg.Connection, user_id: uuid.UUID, cron: str) -> None:
     db.execute(
-        "INSERT INTO config (user_id, location, cron) VALUES (%s, '', %s)"
+        "INSERT INTO config (user_id, cron) VALUES (%s, %s)"
         " ON CONFLICT (user_id) DO UPDATE SET cron = excluded.cron",
         (user_id, cron),
     )

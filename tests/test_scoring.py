@@ -49,8 +49,8 @@ def _url() -> str:
 
 def _set_profile(db, user_id, profile: str, version: int) -> None:
     db.execute(
-        "INSERT INTO config (user_id, location, cron, profile, profile_version)"
-        " VALUES (%s, '', '0 7 * * *', %s, %s)",
+        "INSERT INTO config (user_id, cron, profile, profile_version)"
+        " VALUES (%s, '0 7 * * *', %s, %s)",
         (user_id, profile, version),
     )
 
@@ -158,11 +158,12 @@ def test_config_filters_drop_new_jobs_before_scoring(db, make_user, make_company
     _set_profile(db, user["id"], PROFILE, 1)
     db.execute(
         "UPDATE config SET keywords_include = '{engineer}',"
-        " keywords_exclude = '{intern}', location = 'Berlin' WHERE user_id = %s",
+        " keywords_exclude = '{intern}', locations = '{Berlin}' WHERE user_id = %s",
         (user["id"],),
     )
     fetch = [
-        Opening("Engineer", _url(), location="Remote"),
+        Opening("Engineer", _url(), location="Berlin, Germany"),
+        Opening("Engineer, US", _url(), location="Remote - US"),
         Opening("Engineer Intern", _url()),
         Opening("Designer", _url()),
         Opening("Engineer, Munich", _url(), location="Munich"),

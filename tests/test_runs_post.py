@@ -277,8 +277,8 @@ def test_new_jobs_scored_through_api(
     user = make_user()
     make_company(user["id"], source=_board("acme"))
     db.execute(
-        "INSERT INTO config (user_id, location, cron, profile, profile_version)"
-        " VALUES (%s, '', '0 7 * * *', 'me', 4)",
+        "INSERT INTO config (user_id, cron, profile, profile_version)"
+        " VALUES (%s, '0 7 * * *', 'me', 4)",
         (user["id"],),
     )
     url = _url()

@@ -11,7 +11,6 @@ Vercel) lives in a separate repo.
 | --- | --- |
 | [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) | Source of truth: schemas, full API table and shapes, pipeline, decisions |
 | [`docs/VERSIONING.md`](docs/VERSIONING.md) | Build order v0.1 → v1.0 |
-| [`docs/TASKS.md`](docs/TASKS.md) | Tickets (`BE-`, `FE-`, `PROJ-`) with acceptance criteria; done ones are struck through |
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | Droplet setup, secrets, operations, rollback |
 | [`CLAUDE.md`](CLAUDE.md) | Rules for coding agents (and humans) working in this repo |
 
@@ -276,7 +275,7 @@ need `gitleaks` / `trivy`, e.g. `brew install gitleaks trivy`).
 - The table shows up in the PR comment and in the `test` job summary
   (Dependabot PRs get the summary only: their token can't comment).
 - **Dashboard:** none for now (Codacy / SonarQube Cloud / Codecov
-  skipped, see TASKS.md → PROJ-004).
+  skipped, see PROJ-004).
 
 **Local hooks**
 

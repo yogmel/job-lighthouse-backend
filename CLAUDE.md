@@ -14,8 +14,9 @@ Frontend (Next.js on Vercel) lives in a separate repo. Tickets prefixed
   before changing either.
 - `docs/VERSIONING.md` — build order (v0.1 → v1.0) and what each version
   excludes. Don't build features from a later version early.
-- `docs/TASKS.md` — tickets (`BE-`, `FE-`, `PROJ-`) with acceptance criteria.
-  Reference the ticket ID in branches/commits/PRs.
+- **GitHub Issues** — tickets (`BE-`, `PROJ-`) with acceptance criteria.
+  There is no `docs/TASKS.md`. Reference the ticket ID in
+  branches/commits/PRs.
 
 ## Stack
 
@@ -112,17 +113,17 @@ shared company catalog, email-verification gate. See VERSIONING.md →
 
 ## Current state
 
-Backend tickets for v0.1 – v0.11 are built; v1.0 (cutover) is next. Struck
-tickets in `docs/TASKS.md` are done. Setup, commands, env vars, code layout,
-CI and deploy are in `README.md` — read it rather than guessing a command.
+Backend tickets for v0.1 – v0.11 are built; v1.0 (cutover) is next. Closed
+issues are done. Setup, commands, env vars, code layout, CI and deploy are
+in `README.md` — read it rather than guessing a command.
 
 ## Working in this repo
 
 - **Ticket workflow.** One branch and PR per ticket (or tightly linked
   pair), named after it. The required `pr-title` check fails unless the
-  title starts with a ticket ID. Strike the ticket in `docs/TASKS.md` and
-  update `docs/SYSTEM_DESIGN.md` in the same PR. Put `Closes #<issue>` in
-  the body. `/ticket <ID>` or `/ticket #<issue>` runs this whole flow.
+  title starts with a ticket ID. Update `docs/SYSTEM_DESIGN.md` in the
+  same PR. Put `Closes #<issue>` in the body. `/ticket <ID>` or
+  `/ticket #<issue>` runs this whole flow.
 - **DB tests skip silently** without `DATABASE_URL`. A green `uv run pytest`
   with skips proves nothing: use `make test` / `make cov` (they load
   `.env`), or `set -a; . ./.env; set +a` first. In a new git worktree,
@@ -141,7 +142,7 @@ CI and deploy are in `README.md` — read it rather than guessing a command.
 
 ### Issue tracker
 
-GitHub Issues on `yogmel/job-lighthouse-backend`, mirrored in `docs/TASKS.md`. See `docs/agents/issue-tracker.md`.
+GitHub Issues on `yogmel/job-lighthouse-backend`. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

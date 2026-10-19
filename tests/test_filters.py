@@ -86,14 +86,33 @@ def test_blank_exclude_keywords_are_ignored():
         # No location on the opening always passes.
         ("", True),
         ("   ", True),
-        # Remote always passes.
-        ("Remote - US", True),
-        ("Fully remote", True),
+        # BE-068: remote no longer passes on its own.
+        ("Remote - US", False),
     ],
 )
 def test_location_substring_case_insensitive(location, kept):
-    assert _keeps(JobFilter(location="berlin"), location=location) is kept
+    assert _keeps(JobFilter(locations=("berlin",)), location=location) is kept
 
 
-def test_blank_location_setting_keeps_everything():
-    assert _keeps(JobFilter(location="  "), location="Munich")
+@pytest.mark.parametrize(
+    ("location", "kept"),
+    [
+        # Berlin-only and Germany-only openings: dropped before BE-068.
+        ("Berlin Office", True),
+        ("Munich, Germany", True),
+        ("Remote - European Union", True),
+        ("London, UK", False),
+    ],
+)
+def test_location_any_entry_matches(location, kept):
+    job_filter = JobFilter(locations=("Berlin", "Remote", "Germany"))
+    assert _keeps(job_filter, location=location) is kept
+
+
+def test_empty_locations_keep_everything():
+    assert _keeps(JobFilter(locations=()), location="Munich")
+
+
+def test_blank_location_entries_are_ignored():
+    assert _keeps(JobFilter(locations=("  ", "")), location="Munich")
+    assert not _keeps(JobFilter(locations=(" ", "berlin")), location="Munich")

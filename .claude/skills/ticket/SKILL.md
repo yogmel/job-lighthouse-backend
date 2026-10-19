@@ -34,7 +34,7 @@ You now have both the ticket ID and the issue number (if any).
 
 ## 2. Read the ticket
 
-- Find the ticket in `docs/TASKS.md` and read its acceptance criteria.
+- Read the acceptance criteria in the issue body.
 - Read the parts of `docs/SYSTEM_DESIGN.md` and `docs/VERSIONING.md` it touches.
 
 ## 3. Implement
@@ -46,7 +46,6 @@ You now have both the ticket ID and the issue number (if any).
 
 ## 4. Update docs
 
-- Strike the ticket in `docs/TASKS.md`.
 - Update `docs/SYSTEM_DESIGN.md` to match what was built.
 
 ## 5. Check

@@ -13,8 +13,8 @@ pytestmark = needs_db
 def _seed(db: psycopg.Connection, make_company, make_job, user_id) -> dict:
     """One of every owned row for ``user_id``. Returns their ids."""
     db.execute(
-        "INSERT INTO config (user_id, location, cron, profile)"
-        " VALUES (%s, 'Remote', '0 8 * * *', 'my profile')",
+        "INSERT INTO config (user_id, locations, cron, profile)"
+        " VALUES (%s, '{Remote}', '0 8 * * *', 'my profile')",
         (user_id,),
     )
     company_id = make_company(user_id)

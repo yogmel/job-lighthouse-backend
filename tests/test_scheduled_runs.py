@@ -37,7 +37,7 @@ def _due_user(db: psycopg.Connection, make_user, make_company) -> uuid.UUID:
     """A user with one company, due on every tick."""
     user_id = make_user()["id"]
     db.execute(
-        "INSERT INTO config (user_id, location, cron) VALUES (%s, '', '* * * * *')",
+        "INSERT INTO config (user_id, cron) VALUES (%s, '* * * * *')",
         (user_id,),
     )
     make_company(user_id, source={**BOARD_SOURCE, "board_id": f"b-{user_id}"})

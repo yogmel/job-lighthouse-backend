@@ -11,7 +11,7 @@ pytestmark = needs_db
 BODY = {
     "keywords_include": ["backend"],
     "keywords_exclude": ["intern"],
-    "location": "Berlin",
+    "locations": ["Berlin", "Remote"],
     "cron": "0 8 * * 1-5",
     "timezone": "Europe/Berlin",
     "profile": "# Profile\nBackend engineer.",
@@ -44,7 +44,7 @@ def test_get_creates_defaults_once(runner_client, make_user, auth_header, db):
         "user_id": str(user["id"]),
         "keywords_include": [],
         "keywords_exclude": [],
-        "location": "",
+        "locations": [],
         "cron": "0 7 * * *",
         "timezone": "UTC",
         "profile": "",
@@ -79,12 +79,12 @@ def test_put_replaces_fields(runner_client, make_user, auth_header):
         headers,
         keywords_include=[],
         keywords_exclude=["senior", "staff"],
-        location="Remote",
+        locations=["Germany"],
         cron="*/30 * * * *",
     )
     assert body["keywords_include"] == []
     assert body["keywords_exclude"] == ["senior", "staff"]
-    assert body["location"] == "Remote"
+    assert body["locations"] == ["Germany"]
     assert body["cron"] == "*/30 * * * *"
 
 
@@ -135,12 +135,14 @@ def test_users_are_isolated(runner_client, make_user, auth_header):
 
 def test_put_validation(runner_client, make_user, auth_header):
     headers = auth_header(make_user()["id"])
-    missing = {k: v for k, v in BODY.items() if k != "location"}
+    missing = {k: v for k, v in BODY.items() if k != "locations"}
     for body in (
         missing,
         {**BODY, "cron": "  "},
         {**BODY, "keywords_exclude": [""]},
         {**BODY, "keywords_include": "backend"},
+        {**BODY, "locations": "Berlin"},
+        {**BODY, "locations": ["  "]},
         {**BODY, "timezone": "Mars/Olympus"},
         {**BODY, "timezone": "+02:00"},
         {**BODY, "timezone": ""},
@@ -180,3 +182,14 @@ def test_put_stores_timezone(runner_client, make_user, auth_header):
     )
     got = runner_client.get("/config", headers=headers).json()
     assert got["timezone"] == "America/New_York"
+
+
+def test_old_location_field_is_rejected(runner_client, make_user, auth_header):
+    headers = auth_header(make_user()["id"])
+    old = {k: v for k, v in BODY.items() if k != "locations"}
+    resp = runner_client.put(
+        "/config", headers=headers, json={**old, "location": "Berlin"}
+    )
+    assert resp.status_code == 422
+    body = _put(runner_client, headers)
+    assert "location" not in body

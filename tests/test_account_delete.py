@@ -21,8 +21,8 @@ OWNED = (
 def _seed(db: psycopg.Connection, make_company, make_job, user_id) -> uuid.UUID:
     """One of every owned row for ``user_id``. Returns the run id."""
     db.execute(
-        "INSERT INTO config (user_id, location, cron)"
-        " VALUES (%s, 'Remote', '0 8 * * *')",
+        "INSERT INTO config (user_id, locations, cron)"
+        " VALUES (%s, '{Remote}', '0 8 * * *')",
         (user_id,),
     )
     company_id = make_company(user_id)
