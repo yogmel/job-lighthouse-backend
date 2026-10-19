@@ -37,7 +37,8 @@ class Config(Base):
     keywords_exclude: Mapped[list[str]] = mapped_column(
         ARRAY(Text), server_default="{}"
     )
-    location: Mapped[str] = mapped_column(Text)
+    # Substring-matched against new openings' locations; any one passes.
+    locations: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default="{}")
     # Cron expression, read by the runner's tick loop.
     cron: Mapped[str] = mapped_column(Text)
     # IANA name the cron is evaluated in.

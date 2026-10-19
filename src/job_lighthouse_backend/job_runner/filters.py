@@ -24,9 +24,9 @@ class JobFilter:
     include: tuple[str, ...] = ()
     # Drop if the title has any of these as a whole word, case-insensitive.
     exclude: tuple[str, ...] = ()
-    # Keep if the opening's location contains this, case-insensitive. An
-    # opening with no location, or a remote one, always passes.
-    location: str = ""
+    # Keep if the opening's location contains any of these, case-insensitive.
+    # An opening with no location always passes.
+    locations: tuple[str, ...] = ()
 
     def keeps(self, opening: Opening) -> bool:
         title = opening.title.casefold()
@@ -38,9 +38,9 @@ class JobFilter:
         return self._location_ok(opening.location)
 
     def _location_ok(self, location: str) -> bool:
-        wanted = self.location.strip().casefold()
+        wanted = [w.strip().casefold() for w in self.locations if w.strip()]
         have = location.strip().casefold()
-        return not wanted or not have or "remote" in have or wanted in have
+        return not wanted or not have or any(w in have for w in wanted)
 
 
 # Keeps every opening.
@@ -59,5 +59,7 @@ async def load_filter(session: AsyncSession, user_id: uuid.UUID) -> JobFilter:
     if config is None:
         return NO_FILTER
     return JobFilter(
-        tuple(config.keywords_include), tuple(config.keywords_exclude), config.location
+        tuple(config.keywords_include),
+        tuple(config.keywords_exclude),
+        tuple(config.locations),
     )

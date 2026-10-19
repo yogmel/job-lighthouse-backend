@@ -24,7 +24,7 @@ full target product. Versioning the build is a separate, later exercise.
 - Check all tracking companies; edit, re-test, pause, or remove one
 - Define a recurrent job watcher (schedule)
 - Add your PROFILE to enable agent match-making (`match_score`)
-- Add keywords (include/exclude) and location to filter out irrelevant positions
+- Add keywords (include/exclude) and locations to filter out irrelevant positions
 - Check all jobs
   - Filter by active, company, tier
   - Sort by score
@@ -175,7 +175,7 @@ id: string;
 user_id: string;
 keywords_include: string[]; // title contains any (substring); empty = keep all
 keywords_exclude: string[]; // title has any as a whole word; drops the opening
-location: string; // substring of the opening's location; empty = keep all
+locations: string[]; // opening's location contains any (substring); empty = keep all
 cron: Cron;
 timezone: string; // IANA name the cron is evaluated in; default "UTC"
 profile: string; // markdown, replaces docs/PROFILE.md
@@ -192,8 +192,12 @@ exclude `"Internal Tools"`.
 
 All three filters are applied at run time to **new** openings only (step 4 of
 the [Job runner](#job-runner-service)), case-insensitive. An opening with no
-location, or one whose location contains `"remote"`, always passes the
-location filter. Changing a filter never touches stored jobs (same rule as
+location always passes the location filter. There is no special case for
+`"remote"`: a user who wants remote roles adds `"remote"` to `locations`
+(BE-068 dropped the old shortcut, which let remote roles from any country
+through; its migration split each old `location` on commas and added
+`"Remote"` where it was missing, so existing configs kept their results).
+Changing a filter never touches stored jobs (same rule as
 profile edits).
 
 `profile` lives here rather than in its own store: it is 1:1 with the config,
@@ -533,19 +537,18 @@ backend code on `main` as of BE-011 – BE-015.
   (it used to be a `404` or an empty list).
 - **CORS:** the browser calls both services directly from the Vercel origin,
   so both must answer preflight `OPTIONS` requests and allow that origin with
-  the `Authorization` and `Content-Type` headers. **Not implemented yet**; see
-  TASKS.md → v0.2 follow-ups.
+  the `Authorization` and `Content-Type` headers.
 
 ### Config request/response shapes
 
 | Endpoint      | Request body                                                           | Success      |
 | ------------- | ---------------------------------------------------------------------- | ------------ |
 | `GET /config` | none                                                                   | `200 Config` |
-| `PUT /config` | `{ keywords_include, keywords_exclude, location, cron, timezone, profile, notify_email, notify_empty_company, notify_min_score }` (all required) | `200 Config` |
+| `PUT /config` | `{ keywords_include, keywords_exclude, locations, cron, timezone, profile, notify_email, notify_empty_company, notify_min_score }` (all required) | `200 Config` |
 
 - `Config` is the full [Config](#config) row.
 - The row is created with defaults on the first `GET` or `PUT`: empty
-  keywords, location and profile, `cron: "0 7 * * *"`, `timezone: "UTC"`, `profile_version: 1`,
+  keywords, locations and profile, `cron: "0 7 * * *"`, `timezone: "UTC"`, `profile_version: 1`,
   `notify_email: true`, `notify_empty_company: true`, `notify_min_score: 40`.
 - `PUT` replaces every editable field. `profile_version` is server-owned and
   goes up by one only when `profile` actually changes. `notify_min_score`
@@ -568,7 +571,7 @@ backend code on `main` as of BE-011 – BE-015.
 3. Get jobs from DB
 4. Filter out already existing jobs (same URL = same job; see
    [Job](#job) — no content diffing), then filter by Config: drop new
-   openings that fail `keywords_include`, `keywords_exclude` or `location`
+   openings that fail `keywords_include`, `keywords_exclude` or `locations`
    (see [Config](#config)). They are not inserted and not scored. Step 5 and
    `RunCompanyResult.jobs_found` still use the **full** fetch, so a filter
    never closes a job and a scraper whose openings are all filtered out still

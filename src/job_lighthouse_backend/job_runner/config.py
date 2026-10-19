@@ -48,7 +48,7 @@ class ConfigOut(BaseModel):
     user_id: uuid.UUID
     keywords_include: list[str]
     keywords_exclude: list[str]
-    location: str
+    locations: list[str]
     cron: str
     timezone: str
     profile: str
@@ -66,7 +66,7 @@ class ConfigIn(BaseModel):
 
     keywords_include: list[NonEmptyStr]
     keywords_exclude: list[NonEmptyStr]
-    location: str
+    locations: list[NonEmptyStr]
     # Checked against the schedule by the tick loop (v0.7).
     cron: NonEmptyStr
     # The zone ``cron`` is evaluated in, so "9am" follows DST.
@@ -101,7 +101,7 @@ async def _upsert(session: AsyncSession, stmt: Any) -> Config:
 )
 async def get_config(user_id: CurrentUserId, session: Session) -> ConfigOut:
     """The caller's config, created with defaults if it doesn't exist yet."""
-    stmt = insert(Config).values(user_id=user_id, location="", cron=DEFAULT_CRON)
+    stmt = insert(Config).values(user_id=user_id, cron=DEFAULT_CRON)
     # A no-op update so RETURNING yields the existing row too.
     stmt = stmt.on_conflict_do_update(
         index_elements=[Config.user_id], set_={"user_id": stmt.excluded.user_id}

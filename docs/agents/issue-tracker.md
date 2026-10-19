@@ -5,9 +5,9 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 ## Repo conventions
 
 - **Title format**: `<ID> · <short title>`, e.g. `BE-053 · Let slow selector discovery finish instead of timing out`.
-- **IDs**: `BE-` (this repo), `PROJ-` (cross-cutting / deploy / repo-less). Next ID = highest existing number for that prefix + 1 (check both `docs/TASKS.md` and `gh issue list --state all`).
+- **IDs**: `BE-` (this repo), `PROJ-` (cross-cutting / deploy / repo-less). Next ID = highest existing number for that prefix + 1 (check `gh issue list --state all`).
 - **`FE-` tickets belong in the frontend repo**, not here.
-- **Mirror in `docs/TASKS.md`**: every new ticket also gets an entry under its version heading, in the existing format (`### <ID> · <title>`, `**Target:** … **Version:** …`, **Acceptance criteria:** list). Done tickets are struck (`~~…~~`) in the PR that closes them.
+- **Body format**: start with `**Target:** … **Version:** …`, then the problem and an **Acceptance criteria** checklist. There is no `docs/TASKS.md`; the issue is the only copy, and the PR that closes it uses `Closes #<issue>`.
 - **Version scope**: check `docs/VERSIONING.md` before filing; don't schedule work from a later version early.
 - **Branches / PRs**: one per ticket, named after it; PR title starts with the ticket ID; body has `Closes #<issue>`.
 

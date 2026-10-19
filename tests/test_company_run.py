@@ -354,7 +354,7 @@ def test_filtered_openings_not_inserted_but_counted(db, make_user, make_company)
             Opening("Engineering Intern", intern, "Berlin"),
             Opening("Backend Engineer", munich, "Munich"),
         ),
-        JobFilter(include=("engineer",), exclude=("intern",), location="berlin"),
+        JobFilter(include=("engineer",), exclude=("intern",), locations=("berlin",)),
     )
     assert len(outcome.new_job_ids) == 1
     assert outcome.jobs_found == 3

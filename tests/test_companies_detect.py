@@ -92,8 +92,8 @@ def fakes() -> Iterator[Fakes]:
 
 def _set_profile(db, user_id, profile: str = PROFILE) -> None:
     db.execute(
-        "INSERT INTO config (user_id, location, cron, profile, profile_version)"
-        " VALUES (%s, '', '0 7 * * *', %s, 3)",
+        "INSERT INTO config (user_id, cron, profile, profile_version)"
+        " VALUES (%s, '0 7 * * *', %s, 3)",
         (user_id, profile),
     )
 

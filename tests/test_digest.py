@@ -216,8 +216,8 @@ def test_jobs_sorted_by_score_unscored_last(db, make_user, make_company, make_jo
 
 def _set_prefs(db, user_id, email=True, min_score=40) -> None:
     db.execute(
-        "INSERT INTO config (user_id, location, cron, notify_email, notify_min_score)"
-        " VALUES (%s, '', '0 7 * * *', %s, %s)",
+        "INSERT INTO config (user_id, cron, notify_email, notify_min_score)"
+        " VALUES (%s, '0 7 * * *', %s, %s)",
         (user_id, email, min_score),
     )
 
